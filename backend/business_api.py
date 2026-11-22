@@ -497,6 +497,37 @@ def delete_saved_invoice_item(batch_id: int, line_id: int, db: Session = Depends
     return serialize_challan(stored)
 
 
+@router.delete('/purchase-challans/{batch_id}')
+def delete_saved_purchase_invoice(batch_id: int, db: Session = Depends(get_db)):
+    """Delete an unposted invoice, its draft items and its private scans.
+
+    Seller isolation is provided by get_db's tenant-scoped Session.  Posted
+    stock is audit evidence and must never be removed by a delete request.
+    """
+    batch = (db.query(PurchaseChallan)
+             .options(selectinload(PurchaseChallan.lines),
+                      selectinload(PurchaseChallan.attachments))
+             .filter_by(id=batch_id).with_for_update().first())
+    if batch is None:
+        raise HTTPException(404, 'Invoice not found')
+    if batch.status == 'POSTED' or batch.posted_at is not None:
+        raise HTTPException(409, 'Cannot delete an invoice already posted to inventory')
+    # Compute tenant-private paths before the rows are deleted.  Do not touch
+    # scans until the transaction succeeds, so rollback preserves all files.
+    scans = [_invoice_file_path(a.storage_filename) for a in batch.attachments]
+    db.delete(batch)  # delete-orphan cascade for draft rows and attachments
+    db.commit()
+    for scan in scans:
+        try:
+            scan.unlink(missing_ok=True)
+        except OSError:
+            # The DB deletion succeeded; keep running even if filesystem
+            # cleanup needs later maintenance. Never expose another tenant.
+            import logging
+            logging.getLogger(__name__).warning('Could not remove an old private invoice scan')
+    return {'status': 'deleted', 'id': batch_id}
+
+
 @router.get("/purchase-challans/{batch_id}")
 def get_purchase_challan(batch_id: int, db: Session = Depends(get_db)):
     b = db.query(PurchaseChallan).options(selectinload(PurchaseChallan.lines)).filter_by(id=batch_id).first()

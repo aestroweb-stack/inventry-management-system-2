@@ -17,7 +17,7 @@
   <link rel="stylesheet" href="seller-workspace.css?v=1">
 <link rel="stylesheet" href="workspace-auth.css?v=5">
 <link rel="stylesheet" href="clerk-auth.css?v=1">
-<link rel="stylesheet" href="myraa-ui-refresh.css?v=2">
+<link rel="stylesheet" href="myraa-ui-refresh.css?v=3">
 </head>
 <body>
 
@@ -260,7 +260,7 @@
             <label class="field">Invoice Number (optional)<input class="input" name="invoice_no" maxlength="120" placeholder="INV-001"></label>
             <label class="field">Order Date<input class="input" name="order_date" type="date" required></label>
           </div>
-          <label class="field invoice-file-zone" for="invoice-excel-file"><span class="invoice-file-icon"><i class="fa-solid fa-file-excel"></i></span><strong>Choose an Excel / CSV file</strong><small id="invoice-file-name">.xlsx, .xls or .csv · Max 12 MB</small><input id="invoice-excel-file" class="input" type="file" name="file" accept=".xlsx,.xls,.csv" required></label><a class="invoice-template-link" href="/api/purchase-challans/template" download><i class="fa-solid fa-download"></i> Download Sample Excel Template</a>
+          <label class="field invoice-file-zone" id="invoice-file-zone" for="invoice-excel-file"><span class="invoice-file-icon"><i class="fa-solid fa-file-excel" aria-hidden="true"></i></span><strong>Upload Excel / CSV invoice</strong><small>Drag your file here, or click to browse</small><span class="invoice-file-choose" aria-hidden="true"><i class="fa-solid fa-folder-open"></i> Browse files</span><span class="invoice-file-selected" id="invoice-file-name" aria-live="polite">.xlsx, .xls or .csv · Max 12 MB</span><input id="invoice-excel-file" class="invoice-file-native" type="file" name="file" accept=".xlsx,.xls,.csv" required aria-label="Choose supplier invoice Excel or CSV file"></label><a class="invoice-template-link" href="/api/purchase-challans/template" download><i class="fa-solid fa-download"></i> Download Sample Excel Template</a>
           <p class="hint">Simple Excel: <strong>Product Name · Size · Qty</strong>. After import, enter how many pieces arrived and their purchase rate before pushing to stock.</p>
           <label class="field challan-invoice-upload">Challan / invoice scan (optional)<input class="input" type="file" name="invoice_images" accept="image/jpeg,image/png,image/webp,application/pdf" multiple><small class="hint">Upload up to 12 photos/PDFs for this entire bill, including multiple products.</small></label>
           <button type="submit" class="btn-primary"><i class="fa-solid fa-upload"></i> Import Invoice</button>
@@ -508,13 +508,13 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
 <script src="app.js?v=myraa-seller-v3"></script>
-<script src="myraa-signature-v3.js?v=3"></script>
+<script src="myraa-signature-v3.js?v=4"></script>
 <script src="packing-picklist.js?v=4"></script>
-<script src="business-workspace.js?v=6"></script>
+<script src="business-workspace.js?v=7"></script>
 <script src="product-challan-pages.js?v=3"></script>
 <script src="myraa-challan-studio.js?v=2"></script>
 <script src="seller-sounds.js?v=1"></script>
 <script src="clerk-auth.js?v=8"></script>
-<script src="myraa-ui-refresh.js?v=1"></script>
+<script src="myraa-ui-refresh.js?v=2"></script>
 </body>
 </html>

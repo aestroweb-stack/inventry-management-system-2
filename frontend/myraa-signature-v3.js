@@ -45,19 +45,33 @@
   }
   loadStockHealth();
   document.querySelector('.rail-link[data-view="dashboard"]')?.addEventListener('click',loadStockHealth);
-  // Global search delegates to the existing dashboard search and its event handler.
+  // Global search is a *submit* action. Typing on another page must not
+  // silently take the user to Dashboard (or abandon an unsaved invoice).
   const globalSearch = $('workspace-global-search');
   const dashboardSearch = $('search-box');
   if (globalSearch && dashboardSearch) {
-    let timer;
+    const runSearch = () => {
+      const query = globalSearch.value.trim();
+      if (!document.querySelector('#view-dashboard.is-active')) {
+        document.querySelector('.rail-link[data-view="dashboard"]')?.click();
+      }
+      dashboardSearch.value = query;
+      dashboardSearch.dispatchEvent(new Event('input', { bubbles: true }));
+      dashboardSearch.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+    };
+    globalSearch.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        runSearch();
+      }
+    });
+    // Avoid resending the dashboard query on each character, even if dashboard
+    // is currently active; this also prevents unnecessary API traffic.
     globalSearch.addEventListener('input', () => {
-      clearTimeout(timer);
-      timer = setTimeout(() => {
-        const dashboardNav = document.querySelector('.rail-link[data-view="dashboard"]');
-        if (!document.querySelector('#view-dashboard.is-active')) dashboardNav?.click();
-        dashboardSearch.value = globalSearch.value;
-        dashboardSearch.dispatchEvent(new Event('input', { bubbles: true }));
-      }, 230);
+      globalSearch.setAttribute('aria-label',
+        globalSearch.value.trim()
+          ? 'Search products — press Enter to show results'
+          : 'Search products, SKUs or inventory');
     });
     dashboardSearch.addEventListener('input', () => {
       if (document.activeElement !== globalSearch) globalSearch.value = dashboardSearch.value;

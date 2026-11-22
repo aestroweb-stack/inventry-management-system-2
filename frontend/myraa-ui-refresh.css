@@ -69,3 +69,57 @@
 /* A table cell must remain a table cell; flex here broke table alignment. */
 #view-challans .invoice-records-table td.invoice-record-actions{display:table-cell;vertical-align:middle;white-space:nowrap}
 #view-challans .invoice-records-table td.invoice-record-actions button,#view-challans .invoice-records-table td.invoice-record-actions a{display:inline-flex;vertical-align:middle;margin-right:5px}
+
+/* MYRAA November 2026 regression fixes */
+/* Chrome and some dark-mode form styles were painting an inner rectangle. */
+.workspace-topbar label.workspace-global-search { min-width:0; overflow:hidden; background:#173e36!important; border-color:#366858!important; }
+.workspace-topbar label.workspace-global-search input#workspace-global-search,
+:root[data-theme="dark"] .workspace-topbar label.workspace-global-search input#workspace-global-search {
+  appearance:none!important; -webkit-appearance:none!important; background:transparent!important;
+  border:none!important; box-shadow:none!important; outline:none!important;
+  color:#f3fff8!important; caret-color:#65ebaf!important; border-radius:0!important;
+  min-width:0!important; width:100%!important; height:100%!important;
+  padding:0!important; margin:0!important; font-size:13px!important;
+}
+.workspace-topbar .workspace-global-search input#workspace-global-search::placeholder { color:#aed1c4!important; opacity:1; }
+.workspace-topbar .workspace-global-search:focus-within { outline:2px solid #58dbad; outline-offset:2px; }
+.workspace-topbar input#workspace-global-search::-webkit-search-decoration,
+.workspace-topbar input#workspace-global-search::-webkit-search-cancel-button { -webkit-appearance:none; }
+
+/* Real styled Excel chooser; native input remains accessible through the label. */
+#view-challans label.invoice-file-zone {
+  cursor:pointer; display:flex!important; flex-direction:column; align-items:center;
+  justify-content:center; min-height:190px; padding:23px 18px;
+  border:2px dashed #78b99c!important; background:#f2faf6!important;
+  border-radius:16px!important; gap:10px;
+  transition:background .15s,border-color .15s,box-shadow .15s;
+}
+#view-challans label.invoice-file-zone:hover,
+#view-challans label.invoice-file-zone.is-dragging,
+#view-challans label.invoice-file-zone:focus-within {
+  border-color:#07865c!important; background:#e3f5ea!important; box-shadow:0 0 0 3px #0a8d6220;
+}
+#view-challans label.invoice-file-zone .invoice-file-choose {
+  display:inline-flex; align-items:center; gap:8px; background:#007d59;
+  border-radius:10px; color:white; font-weight:800; padding:11px 20px; font-size:13px;
+}
+#view-challans label.invoice-file-zone .invoice-file-selected { word-break:break-word; max-width:100%; }
+#view-challans label.invoice-file-zone.has-file .invoice-file-selected { color:#006b4a; font-weight:800; }
+#view-challans label.invoice-file-zone.is-invalid {border-color:#e25c65!important}
+#view-challans label.invoice-file-zone.is-invalid .invoice-file-selected {color:#bf3441!important}
+#view-challans label.invoice-file-zone input.invoice-file-native {
+  position:absolute!important; width:1px!important; height:1px!important; opacity:0!important;
+  pointer-events:none!important; padding:0!important; margin:0!important; border:0!important;
+}
+:root[data-theme="dark"] #view-challans label.invoice-file-zone { background:#173b33!important; border-color:#447e68!important; color:#eafff2!important; }
+:root[data-theme="dark"] #view-challans label.invoice-file-zone:hover,
+:root[data-theme="dark"] #view-challans label.invoice-file-zone.is-dragging { background:#1d4c3d!important; border-color:#66d5a6!important; }
+:root[data-theme="dark"] #view-challans label.invoice-file-zone .invoice-file-selected { color:#b9dccb; }
+:root[data-theme="dark"] #view-challans label.invoice-file-zone.has-file .invoice-file-selected { color:#8af6bd; }
+
+#view-challans .invoice-record-actions .invoice-delete-action { border-color:#eebaba; color:#aa2734; padding:9px 11px; }
+#view-challans .invoice-record-actions .invoice-delete-action:not(:disabled):hover { background:#ffebed; color:#b62235; }
+:root[data-theme="dark"] #view-challans .invoice-record-actions .invoice-delete-action { border-color:#915961; color:#ffadb4; }
+:root[data-theme="dark"] #view-challans .invoice-record-actions .invoice-delete-action:not(:disabled):hover { background:#573036; color:#ffced3; }
+#view-challans .invoice-record-actions .invoice-delete-action:disabled { opacity:.35; cursor:not-allowed; }
+.sr-only {position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important;}

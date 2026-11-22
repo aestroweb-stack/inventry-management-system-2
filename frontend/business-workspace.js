@@ -204,11 +204,47 @@
     const listing=$('challan-batches');if(!listing)return;
     const page=challanRows;
     const totalPages=Math.max(1,Math.ceil(challanTotal/PAGE_SIZE));
-    listing.innerHTML=page.length ? `<div class="invoice-records-scroll"><table class="invoice-records-table"><thead><tr><th>Invoice No.</th><th>Supplier / Party</th><th>Date</th><th>Items</th><th>Received / Ordered</th><th>Value</th><th>Status</th><th>Actions</th></tr></thead><tbody>${page.map(b=>`<tr class="${b.id===selectedId?'is-selected':''}"><td><strong>${E(b.challan_no)}</strong><small>${E(b.invoice_no||'')}</small></td><td>${E(b.party_name)}</td><td>${E(b.order_date)}</td><td>${(b.lines||[]).length}</td><td>${b.received} / ${b.ordered} pcs</td><td>${money(b.received_value_known)}</td><td><span class="invoice-status invoice-status-${E(b.status)}">${E(b.status)}</span></td><td class="invoice-record-actions"><button type="button" data-id="${b.id}" data-action="view" aria-label="View invoice ${E(b.challan_no)}"><i class="fa-regular fa-eye"></i> View</button><button type="button" data-id="${b.id}" data-action="edit" ${b.status==='POSTED'?'disabled title="Posted invoices cannot be edited"':''} aria-label="Edit invoice ${E(b.challan_no)}"><i class="fa-solid fa-pen"></i> Edit</button><a href="/api/purchase-challans/${b.id}/export" download="MYRAA_Invoice_${b.id}.xlsx" aria-label="Download invoice ${E(b.challan_no)} Excel"><i class="fa-solid fa-file-excel"></i> Excel</a></td></tr>`).join('')}</tbody></table></div>` : '<div class="invoice-no-records"><i class="fa-regular fa-folder-open"></i><strong>No saved invoices found</strong><span>Try clearing the search filters or create your first invoice.</span></div>';
-    listing.querySelectorAll('button[data-id]').forEach(button=>button.addEventListener('click',()=>openChallan(Number(button.dataset.id),button.dataset.action,button)));
+    listing.innerHTML=page.length ? `<div class="invoice-records-scroll"><table class="invoice-records-table"><thead><tr><th>Invoice No.</th><th>Supplier / Party</th><th>Date</th><th>Items</th><th>Received / Ordered</th><th>Value</th><th>Status</th><th>Actions</th></tr></thead><tbody>${page.map(b=>`<tr class="${b.id===selectedId?'is-selected':''}"><td><strong>${E(b.challan_no)}</strong><small>${E(b.invoice_no||'')}</small></td><td>${E(b.party_name)}</td><td>${E(b.order_date)}</td><td>${(b.lines||[]).length}</td><td>${b.received} / ${b.ordered} pcs</td><td>${money(b.received_value_known)}</td><td><span class="invoice-status invoice-status-${E(b.status)}">${E(b.status)}</span></td><td class="invoice-record-actions"><button type="button" data-id="${b.id}" data-action="view" aria-label="View invoice ${E(b.challan_no)}"><i class="fa-regular fa-eye"></i> View</button><button type="button" data-id="${b.id}" data-action="edit" ${b.status==='POSTED'?'disabled title="Posted invoices cannot be edited"':''} aria-label="Edit invoice ${E(b.challan_no)}"><i class="fa-solid fa-pen"></i> Edit</button><a href="/api/purchase-challans/${b.id}/export" download="MYRAA_Invoice_${b.id}.xlsx" aria-label="Download invoice ${E(b.challan_no)} Excel"><i class="fa-solid fa-file-excel"></i> Excel</a><button type="button" class="invoice-delete-action" data-id="${b.id}" data-action="delete" ${b.status==='POSTED'?'disabled title="Posted invoices cannot be deleted"':''} aria-label="Delete invoice ${E(b.challan_no)}" title="Delete saved draft invoice"><i class="fa-solid fa-trash-can" aria-hidden="true"></i><span class="sr-only">Delete invoice</span></button></td></tr>`).join('')}</tbody></table></div>` : '<div class="invoice-no-records"><i class="fa-regular fa-folder-open"></i><strong>No saved invoices found</strong><span>Try clearing the search filters or create your first invoice.</span></div>';
+    listing.querySelectorAll('button[data-id]').forEach(button=>button.addEventListener('click',()=>{
+      const id = Number(button.dataset.id);
+      if (button.dataset.action === 'delete') {
+        deleteChallan(id, button);
+      } else {
+        openChallan(id, button.dataset.action, button);
+      }
+    }));
     if($('challan-page-status'))$('challan-page-status').textContent=challanTotal ? `${challanPage*PAGE_SIZE+1}–${Math.min((challanPage+1)*PAGE_SIZE,challanTotal)} of ${challanTotal}`:'0 of 0';
     if($('challan-page-prev'))$('challan-page-prev').disabled=challanPage===0;
     if($('challan-page-next'))$('challan-page-next').disabled=challanPage>=totalPages-1;
+  }
+  let deletingInvoice = false;
+  async function deleteChallan(id, button) {
+    if (deletingInvoice || !Number.isSafeInteger(id)) return;
+    const record = challanRows.find(b => b.id === id);
+    if (!record || record.status === 'POSTED') return;
+    const label = record.challan_no || `#${id}`;
+    if (!window.confirm(`Delete invoice ${label} from ${record.party_name}?\n\nAll saved items and scans for this invoice will be removed. This cannot be undone. Stock-posted invoices are protected.`)) return;
+    deletingInvoice = true;
+    button.disabled = true;
+    button.setAttribute('aria-busy','true');
+    try {
+      await json(`/api/purchase-challans/${id}`, { method:'DELETE' });
+      if (selectedId === id) {
+        selectedId=null;
+        selected=null;
+        window.myraaChallanStudio?.newChallan?.();
+        const detail=$('challan-detail-panel'); if (detail) detail.hidden=true;
+      }
+      await loadChallans();
+    } catch (error) {
+      window.alert(`Could not delete invoice: ${error.message}`);
+    } finally {
+      deletingInvoice=false;
+      if (button.isConnected) {
+        button.disabled=false;
+        button.removeAttribute('aria-busy');
+      }
+    }
   }
   const searchChallans=()=>{challanPage=0;clearTimeout(searchTimer);searchTimer=setTimeout(()=>loadChallans(),280);};
   $('challan-search')?.addEventListener('input',searchChallans);
