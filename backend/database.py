@@ -16,6 +16,65 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./inventory.db")
 
+# MYRAA_DB_PREFLIGHT_V1: fail safely if Railway SQLite storage is not mounted.
+# Railway supplies RAILWAY_VOLUME_MOUNT_PATH automatically when a volume is attached.
+# Never silently fall back to an ephemeral database for seller inventory.
+def _prepare_sqlite_database_file(url):
+    from sqlalchemy.engine import make_url
+    db_name = make_url(url).database
+    if not db_name or db_name == ":memory:":
+        return
+
+    db_path = Path(db_name).expanduser().resolve()
+    on_railway = bool(
+        os.getenv("RAILWAY_PROJECT_ID")
+        or os.getenv("RAILWAY_SERVICE_ID")
+        or os.getenv("RAILWAY_ENVIRONMENT")
+    )
+    if on_railway:
+        mount = os.getenv("RAILWAY_VOLUME_MOUNT_PATH")
+        if not mount:
+            raise RuntimeError(
+                "MYRAA storage: no Railway persistent volume attached. "
+                "Attach the existing volume to this service at /data; "
+                "set DATABASE_URL=sqlite:////data/inventory.db. "
+                "Do not create or use an ephemeral database."
+            )
+        volume_path = Path(mount).resolve()
+        if not volume_path.is_dir():
+            raise RuntimeError(
+                f"MYRAA storage: volume mount {volume_path} is not a directory "
+                "at runtime. Check Railway volume attachment/mount path."
+            )
+        if not db_path.is_relative_to(volume_path) or db_path == volume_path:
+            raise RuntimeError(
+                f"MYRAA storage: SQLite path {db_path} is outside volume "
+                f"{volume_path}. Set DATABASE_URL to a path inside that volume."
+            )
+
+    try:
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise RuntimeError(
+            f"MYRAA storage: cannot create database directory {db_path.parent}. "
+            "Check Railway volume mount path and write permissions."
+        ) from exc
+    if not os.access(db_path.parent, os.W_OK | os.X_OK):
+        raise RuntimeError(
+            f"MYRAA storage: database directory {db_path.parent} is not writable. "
+            "Check volume permissions; never replace the database to fix permissions."
+        )
+    if db_path.exists() and not os.access(db_path, os.W_OK):
+        raise RuntimeError(
+            f"MYRAA storage: existing database {db_path} is not writable. "
+            "Check Railway volume permissions and ownership."
+        )
+
+
+if DATABASE_URL.startswith("sqlite"):
+    _prepare_sqlite_database_file(DATABASE_URL)
+
+
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
 if DATABASE_URL.startswith("sqlite"):
     engine = create_engine(DATABASE_URL, connect_args=connect_args)
