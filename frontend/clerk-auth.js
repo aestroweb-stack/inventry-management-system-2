@@ -11,7 +11,7 @@
   const localAuthUrl = (view) => `${loginPageUrl}?mode=${view === 'signup' ? 'signup' : 'signin'}`;
   let currentLoginView = null;
   const statusLine = (message) => {
-    const el = $('clerk-auth-error') || $('myraa-login-error');
+    const el = $('clerk-auth-error');
     if (el) el.textContent = message || '';
   };
   const request = async (url, method='GET', body) => {
@@ -78,7 +78,7 @@
       account=payload.approved ? payload.user : null;
       if(payload.approved) {
         if(loginPage) location.replace(home);
-        else { refreshAppProfile(account); $('myraa-login')?.setAttribute('hidden',''); }
+        else refreshAppProfile(account);
       } else {
         await removeBackendSession();
         throw new Error('Clerk-verified account could not access workspace');
@@ -315,7 +315,13 @@
   const startup=loginPage?initLoginPage:initAppPage;
   startup().catch(error=>{
     statusLine(error.message||'Secure login unavailable');
-    if(!loginPage){$('myraa-login')?.removeAttribute('hidden');}
-    else {const root=$('clerk-auth-root');if(root)root.textContent='Unable to initialize Clerk. Check the settings in Railway.';}
+    if(!loginPage) {
+      // Never resurrect the removed legacy login overlay. Fail closed and
+      // return to the branded, in-page Clerk sign-in UI on auth errors.
+      location.replace(localAuthUrl('signin'));
+    } else {
+      const root=$('clerk-auth-root');
+      if(root)root.textContent='Unable to initialize Clerk. Check the settings in Railway.';
+    }
   });
 })();

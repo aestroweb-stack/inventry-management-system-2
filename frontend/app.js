@@ -1934,27 +1934,10 @@ async function refreshInventoryViews() {
 for (const id of ['hero-add-product']) document.getElementById(id)?.addEventListener('click',()=>switchView('products'));
 for (const id of ['hero-photo-search','workspace-photo-search']) document.getElementById(id)?.addEventListener('click',()=>switchView('visual'));
 
-// Account login is handled by workspace-auth.js; no APP_PASSWORD or shared
-// workspace password is ever sent by the browser.
-async function checkMyraaAccess() {
-  try {
-    const response = await fetch(`${API}/auth/status`, {credentials:"same-origin"});
-    if (!response.ok) throw new Error("Login status unavailable");
-    const status = await response.json();
-    if ($("logout-button")) $("logout-button").hidden = !status.authenticated;
-    if (!status.authenticated) {
-      const overlay = $("myraa-login");
-      if (overlay) overlay.hidden = false;
-      if (status.configuration_required) {
-        $("myraa-login-error").textContent = "Railway par MYRAA_USER_SESSION_SECRET configure karein.";
-      }
-    }
-  } catch {
-    const overlay = $("myraa-login");
-    if (overlay) overlay.hidden = false;
-  }
-}
-checkMyraaAccess();
+// Authentication and redirects are exclusively managed by Clerk in
+// clerk-auth.js. The retired session-status overlay was removed because
+// its asynchronous response could flash an obsolete login screen even after
+// a successful Clerk exchange. No legacy login UI is mounted on /app/.
 
 async function loadAlerts() {
   const list = $("alerts-list");
