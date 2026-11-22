@@ -19,6 +19,7 @@
 <link rel="stylesheet" href="clerk-auth.css?v=1">
 <link rel="stylesheet" href="myraa-ui-refresh.css?v=4">
 <link rel="stylesheet" href="myraa-accessible-v2.css?v=3">
+<link rel="stylesheet" href="myraa-premium-nav.css?v=1">
 </head>
 <body>
 
@@ -65,7 +66,21 @@
     <div class="workspace-topbar">
       <div class="workspace-breadcrumb"><span class="workspace-brand"><i class="fa-solid fa-layer-group" aria-hidden="true"></i> MYRAA <span class="workspace-brand-muted">Inventory</span></span></div>
       <label class="workspace-global-search" for="workspace-global-search"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><input id="workspace-global-search" type="search" placeholder="Search products, SKUs or inventory…" autocomplete="off" aria-label="Search inventory"><kbd>/</kbd></label>
-      <div class="workspace-top-actions"><button type="button" id="sound-toggle" class="sound-toggle" aria-pressed="false" title="Enable scan sounds"><i class="fa-solid fa-volume-xmark"></i> Sound off</button><button id="workspace-photo-search" type="button"><i class="fa-solid fa-camera"></i> Photo</button><button type="button" class="workspace-theme-switch theme-toggle" data-theme-toggle aria-label="Switch to dark mode" aria-pressed="false" title="Toggle theme"><i class="fa-solid fa-moon" aria-hidden="true"></i></button><button id="workspace-user-profile" type="button" class="workspace-user-avatar workspace-avatar-button" title="Your MYRAA profile" aria-label="Open your account profile"><span class="workspace-avatar-initial">M</span><span id="workspace-user-name" class="workspace-user-name">My account</span><i class="fa-solid fa-chevron-down" aria-hidden="true"></i></button></div>
+      <div class="workspace-top-actions" aria-label="Workspace toolbar">
+        <button type="button" id="sound-toggle" class="sound-toggle" aria-pressed="false" title="Toggle notification sounds"><i class="fa-solid fa-volume-xmark" aria-hidden="true"></i><span class="nav-sound-label">Sound off</span></button>
+        <button id="workspace-photo-search" type="button" title="Find a product by photo"><i class="fa-solid fa-camera" aria-hidden="true"></i><span class="nav-photo-label">Photo</span></button>
+        <button type="button" class="workspace-theme-switch theme-toggle" data-theme-toggle aria-label="Switch to dark mode" aria-pressed="false" title="Toggle theme"><i class="fa-solid fa-moon" aria-hidden="true"></i></button>
+        <div class="workspace-account" id="workspace-account">
+          <button id="workspace-user-profile" type="button" class="workspace-user-avatar workspace-avatar-button" title="Account menu" aria-haspopup="menu" aria-controls="workspace-account-menu" aria-expanded="false" aria-label="Open account menu">
+            <span class="workspace-avatar-initial" aria-hidden="true">M</span><span id="workspace-user-name" class="workspace-user-name">My account</span><i class="fa-solid fa-chevron-down workspace-account-caret" aria-hidden="true"></i>
+          </button>
+          <div id="workspace-account-menu" class="workspace-account-menu" role="menu" aria-label="Account" hidden>
+            <div class="workspace-account-heading" aria-hidden="true"><span id="workspace-account-display-name">My account</span><small id="workspace-account-email">Private seller workspace</small></div>
+            <button type="button" role="menuitem" id="workspace-account-profile"><i class="fa-regular fa-user" aria-hidden="true"></i> Profile</button>
+            <button type="button" role="menuitem" id="workspace-account-signout"><i class="fa-solid fa-arrow-right-from-bracket" aria-hidden="true"></i> Sign out</button>
+          </div>
+        </div>
+      </div>
     </div>
 
 <section id="view-profile" class="view myraa-profile-page" aria-label="Seller Profile">
@@ -536,5 +551,6 @@
 <script src="seller-sounds.js?v=1"></script>
 <script src="clerk-auth.js?v=8"></script>
 <script src="myraa-ui-refresh.js?v=3"></script>
+<script src="myraa-premium-nav.js?v=1"></script>
 </body>
 </html>

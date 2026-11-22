@@ -91,6 +91,7 @@
     if(avatar) {const initial=avatar.querySelector('.workspace-avatar-initial'); if(initial)initial.textContent=(user.display_name || 'M').charAt(0).toUpperCase(); else avatar.textContent=(user.display_name || 'M').charAt(0).toUpperCase();avatar.title=`${user.display_name} · ${user.role}`;}
     const name=$('workspace-user-name');if(name)name.textContent=user.display_name||'My account';
     if($('logout-button')) $('logout-button').hidden=false;
+    window.dispatchEvent(new CustomEvent('myraa:account', { detail: { name:user.display_name||'My account', email:user.email||'' } }));
     // The full account label lives inside the profile menu, not in the cramped brand breadcrumb.
   }
   async function signOut() {
@@ -278,7 +279,7 @@
       document.querySelector('.rail-link[data-view="profile"]')?.click();
       try {showProfile(await request('/api/workspace-auth/me'));}catch(e){statusLine(e.message);}
     }
-    $('workspace-user-profile')?.addEventListener('click',openSellerProfile);
+    // Topbar account trigger opens the accessible dropdown; profile link below retains the data loader.
     $('workspace-profile-link')?.addEventListener('click',openSellerProfile);
     $('workspace-profile-close')?.addEventListener('click',()=>document.querySelector('.rail-link[data-view="dashboard"]')?.click());
     $('workspace-profile-form')?.addEventListener('submit',async e=>{
