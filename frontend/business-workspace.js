@@ -204,8 +204,8 @@
     const listing=$('challan-batches');if(!listing)return;
     const page=challanRows;
     const totalPages=Math.max(1,Math.ceil(challanTotal/PAGE_SIZE));
-    listing.innerHTML=page.map(b=>`<button type="button" class="challan-batch ${b.id===selectedId?'is-selected':''}" data-id="${b.id}"><span><b>${E(b.party_name)} · ${E(b.challan_no)}</b><small>${E(b.order_date)} · ${E(b.status)} · Invoice ${E(b.invoice_no||'—')}</small></span><strong>${b.pending} pending / ${b.ordered} pcs</strong></button>`).join('')||'<p class="hint">No challans match your search/date. Try clearing the filters.</p>';
-    listing.querySelectorAll('button[data-id]').forEach(button=>button.addEventListener('click',()=>openChallan(Number(button.dataset.id))));
+    listing.innerHTML=page.length ? `<div class="invoice-records-scroll"><table class="invoice-records-table"><thead><tr><th>Invoice No.</th><th>Supplier / Party</th><th>Date</th><th>Items</th><th>Received / Ordered</th><th>Value</th><th>Status</th><th>Actions</th></tr></thead><tbody>${page.map(b=>`<tr class="${b.id===selectedId?'is-selected':''}"><td><strong>${E(b.challan_no)}</strong><small>${E(b.invoice_no||'')}</small></td><td>${E(b.party_name)}</td><td>${E(b.order_date)}</td><td>${(b.lines||[]).length}</td><td>${b.received} / ${b.ordered} pcs</td><td>${money(b.received_value_known)}</td><td><span class="invoice-status invoice-status-${E(b.status)}">${E(b.status)}</span></td><td class="invoice-record-actions"><button type="button" data-id="${b.id}" data-action="view" aria-label="View invoice ${E(b.challan_no)}"><i class="fa-regular fa-eye"></i> View</button><button type="button" data-id="${b.id}" data-action="edit" ${b.status==='POSTED'?'disabled title="Posted invoices cannot be edited"':''} aria-label="Edit invoice ${E(b.challan_no)}"><i class="fa-solid fa-pen"></i> Edit</button><a href="/api/purchase-challans/${b.id}/export" download="MYRAA_Invoice_${b.id}.xlsx" aria-label="Download invoice ${E(b.challan_no)} Excel"><i class="fa-solid fa-file-excel"></i> Excel</a></td></tr>`).join('')}</tbody></table></div>` : '<div class="invoice-no-records"><i class="fa-regular fa-folder-open"></i><strong>No saved invoices found</strong><span>Try clearing the search filters or create your first invoice.</span></div>';
+    listing.querySelectorAll('button[data-id]').forEach(button=>button.addEventListener('click',()=>openChallan(Number(button.dataset.id),button.dataset.action)));
     if($('challan-page-status'))$('challan-page-status').textContent=challanTotal ? `${challanPage*PAGE_SIZE+1}–${Math.min((challanPage+1)*PAGE_SIZE,challanTotal)} of ${challanTotal}`:'0 of 0';
     if($('challan-page-prev'))$('challan-page-prev').disabled=challanPage===0;
     if($('challan-page-next'))$('challan-page-next').disabled=challanPage>=totalPages-1;
@@ -241,14 +241,19 @@
       challanRows=data.items||[];
       challanTotal=Number(data.total||0);
       renderChallanList();
-      if(selectedId) await openChallan(selectedId);
+      if(selectedId){
+        const current=challanRows.find(x=>x.id===selectedId);
+        if(current) {selected=await json(`/api/purchase-challans/${selectedId}`);renderChallan();}
+      }
     }catch(err){listing.innerHTML=`<p class="business-message is-error">${E(err.message)}</p>`;}
   }
   window.myraaLoadChallans=loadChallans;
   window.myraaOpenChallan=openChallan;
   window.myraaClearChallanSelection=()=>{selectedId=null;selected=null;};
-  async function openChallan(id){
-    try{selected=await json(`/api/purchase-challans/${id}`);selectedId=id;renderChallan();}
+  async function openChallan(id, mode='view'){
+    try{selected=await json(`/api/purchase-challans/${id}`);selectedId=id;renderChallan();renderChallanList();
+      if(window.myraaChallanStudio?.onSelected){const studio=$('myraa-challan-studio');studio?.scrollIntoView({behavior:'smooth',block:'start'});if(mode==='edit')$('cs-party')?.focus({preventScroll:true});}
+      else $('challan-detail-panel')?.scrollIntoView({behavior:'smooth',block:'start'});}
     catch(err){window.alert(`Could not load challan: ${err.message}`);}
   }
   function renderChallan(){
@@ -323,7 +328,7 @@
       let warning='';
       if(uploads.length){try{await uploadScans(batch.id,uploads);}catch(err){warning=` Bill imported, but scans were not saved: ${err.message}. Retry inside bill details.`;}}
       form.reset();notice(message,warning||'Challan imported. Save received pieces and unit costs before posting.',!!warning);
-      await loadChallans();
+      await loadChallans(); await openChallan(batch.id);
     }catch(err){notice(message,err.message,true);}finally{button.disabled=false;}
   });
   const dateInput=$('challan-import-form')?.querySelector('[name=order_date]');

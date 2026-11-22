@@ -17,6 +17,7 @@
   <link rel="stylesheet" href="seller-workspace.css?v=1">
 <link rel="stylesheet" href="workspace-auth.css?v=5">
 <link rel="stylesheet" href="clerk-auth.css?v=1">
+<link rel="stylesheet" href="myraa-ui-refresh.css?v=1">
 </head>
 <body>
 
@@ -46,7 +47,7 @@
       <button data-view="visual" class="rail-link"><i class="fa-solid fa-camera-retro"></i><span class="rail-label">Visual Product Search</span></button>
       <button data-view="bulk" class="rail-link"><i class="fa-solid fa-clipboard-check"></i><span class="rail-label">Bulk Stock Count</span></button>
       <button data-view="orders" class="rail-link"><i class="fa-solid fa-file-invoice"></i><span class="rail-label">Process Orders</span></button>
-      <button data-view="challans" class="rail-link"><i class="fa-solid fa-file-invoice-dollar"></i><span class="rail-label">Purchase Challans</span></button>
+      <button data-view="challans" class="rail-link"><i class="fa-solid fa-file-invoice-dollar"></i><span class="rail-label">Purchase Invoice</span></button>
       <button data-view="packing" class="rail-link"><i class="fa-solid fa-people-carry-box"></i><span class="rail-label">Packing Picklist</span></button>
       <button data-view="reorder" class="rail-link"><i class="fa-solid fa-cart-shopping"></i><span class="rail-label">Reorder List</span></button>
       <button data-view="alerts" class="rail-link"><i class="fa-solid fa-bell"></i><span class="rail-label">Alerts</span><span id="alert-count" class="badge" hidden>0</span></button>
@@ -56,14 +57,14 @@
       <button data-view="profile" id="workspace-profile-link" class="rail-link" type="button"><i class="fa-solid fa-user-gear"></i><span class="rail-label">Seller Profile</span></button>
       <button class="rail-link theme-toggle" type="button" data-theme-toggle aria-label="Switch to dark mode" title="Switch to dark mode" aria-pressed="false"><i class="fa-solid fa-moon" aria-hidden="true"></i><span class="rail-label">Dark mode</span></button>
     </nav>
-    <div class="rail-foot"><div class="rail-status"><span class="assistant-online-dot"></span> Railway cloud · Connected</div><small>Private seller inventory · Hacker Room</small><button id="logout-button" class="rail-logout" type="button" hidden><i class="fa-solid fa-right-from-bracket"></i> Sign out</button></div>
+    <div class="rail-foot"><div class="rail-status"><span class="assistant-online-dot"></span> Workspace · Secure</div><small>Private seller inventory · Hacker Room</small><button id="logout-button" class="rail-logout" type="button" hidden><i class="fa-solid fa-right-from-bracket"></i> Sign out</button></div>
   </aside>
 
   <main id="stage" class="stage">
     <div class="workspace-topbar">
-      <div class="workspace-breadcrumb"><span class="workspace-brand"><i class="fa-solid fa-layer-group" aria-hidden="true"></i> MYRAA <span class="workspace-brand-muted">Inventory</span></span><span class="workspace-env"><i class="fa-solid fa-cloud"></i> RAILWAY CLOUD</span></div>
+      <div class="workspace-breadcrumb"><span class="workspace-brand"><i class="fa-solid fa-layer-group" aria-hidden="true"></i> MYRAA <span class="workspace-brand-muted">Inventory</span></span></div>
       <label class="workspace-global-search" for="workspace-global-search"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><input id="workspace-global-search" type="search" placeholder="Search products, SKUs or inventory…" autocomplete="off" aria-label="Search inventory"><kbd>/</kbd></label>
-      <div class="workspace-top-actions"><button type="button" id="sound-toggle" class="sound-toggle" aria-pressed="false" title="Enable scan sounds"><i class="fa-solid fa-volume-xmark"></i> Sound off</button><button id="workspace-photo-search" type="button"><i class="fa-solid fa-camera"></i> Photo</button><button type="button" class="workspace-theme-switch theme-toggle" data-theme-toggle aria-label="Switch to dark mode" aria-pressed="false" title="Toggle theme"><i class="fa-solid fa-moon" aria-hidden="true"></i></button><button id="workspace-user-profile" type="button" class="workspace-user-avatar workspace-avatar-button" title="Your MYRAA profile" aria-label="Open your account profile">M</button></div>
+      <div class="workspace-top-actions"><button type="button" id="sound-toggle" class="sound-toggle" aria-pressed="false" title="Enable scan sounds"><i class="fa-solid fa-volume-xmark"></i> Sound off</button><button id="workspace-photo-search" type="button"><i class="fa-solid fa-camera"></i> Photo</button><button type="button" class="workspace-theme-switch theme-toggle" data-theme-toggle aria-label="Switch to dark mode" aria-pressed="false" title="Toggle theme"><i class="fa-solid fa-moon" aria-hidden="true"></i></button><button id="workspace-user-profile" type="button" class="workspace-user-avatar workspace-avatar-button" title="Your MYRAA profile" aria-label="Open your account profile"><span class="workspace-avatar-initial">M</span><span id="workspace-user-name" class="workspace-user-name">My account</span><i class="fa-solid fa-chevron-down" aria-hidden="true"></i></button></div>
     </div>
 
 <section id="view-profile" class="view myraa-profile-page" aria-label="Seller Profile">
@@ -234,23 +235,23 @@
 
     <!-- ================= ORDERS ================= -->
     <section id="view-challans" class="view">
-      <header class="view-head myraa-challan-page-head"><div><span class="section-eyebrow">SUPPLIER PURCHASES</span><h1><i class="fa-solid fa-file-invoice-dollar" aria-hidden="true"></i> Purchase Challans</h1><p class="sub">Supplier orders, received pieces, pending stock and invoice documents in one place.</p></div><a class="btn-secondary myraa-challan-download" href="/api/purchase-challans/template" download="MYRAA_Challan_3_Column_Template.xlsx"><i class="fa-solid fa-file-excel"></i> Download Excel Template</a></header>
-      <section class="myraa-challan-studio" id="myraa-challan-studio" aria-label="Purchase Challan Editor">
-        <header class="cs-header"><div class="cs-title"><span class="cs-logo"><i class="fa-solid fa-receipt"></i></span><div><h2>Purchase Challans</h2><p>Record purchases from suppliers, track received stock and push to inventory.</p></div></div>
-          <div class="cs-header-actions"><button id="cs-new" class="cs-secondary" type="button"><i class="fa-solid fa-plus"></i> New</button><a class="cs-secondary" id="cs-export" href="/api/purchase-challans/template" download><i class="fa-solid fa-download"></i> Download Excel</a></div>
+      <header class="view-head myraa-challan-page-head"><div><span class="section-eyebrow">SUPPLIER PURCHASES</span><h1><i class="fa-solid fa-file-invoice-dollar" aria-hidden="true"></i> Purchase Invoice</h1><p class="sub">Record supplier invoices, manage received pieces and export your records.</p></div><a class="btn-secondary myraa-challan-download" href="/api/purchase-challans/template" download="MYRAA_Challan_3_Column_Template.xlsx"><i class="fa-solid fa-file-excel"></i> Download Excel Template</a></header>
+      <section class="myraa-challan-studio" id="myraa-challan-studio" aria-label="Purchase Invoice Editor">
+        <header class="cs-header"><div class="cs-title"><span class="cs-logo"><i class="fa-solid fa-receipt"></i></span><div><h2>Purchase Invoice</h2><p>Record purchases from suppliers, track received stock and push to inventory.</p></div></div>
+          <div class="cs-header-actions"><button id="cs-new" class="cs-secondary" type="button"><i class="fa-regular fa-file-lines"></i> New Invoice</button><a class="cs-secondary" id="cs-export" href="/api/purchase-challans/template" download><i class="fa-solid fa-download"></i> Download Excel</a></div>
         </header>
         <div class="cs-stats"><div class="cs-stat cs-ordered"><i class="fa-solid fa-cart-shopping"></i><span>Ordered<strong id="cs-ordered">0 pcs</strong></span></div><div class="cs-stat cs-received"><i class="fa-solid fa-cube"></i><span>Received<strong id="cs-received">0 pcs</strong></span></div><div class="cs-stat cs-pending"><i class="fa-regular fa-clock"></i><span>Pending<strong id="cs-pending">0 pcs</strong></span></div><div class="cs-stat cs-value"><i class="fa-solid fa-coins"></i><span>Goods Value<strong id="cs-value">₹0</strong></span></div></div>
         <form id="cs-form">
-          <div class="cs-fields"><label>Supplier / Party <em>*</em><input required maxlength="180" id="cs-party" placeholder="Enter supplier name" list="cs-suppliers"><datalist id="cs-suppliers"></datalist></label><label>Challan No. <em>*</em><input id="cs-number" maxlength="120" required placeholder="CH-2026-001"></label><label>Challan Date <em>*</em><input id="cs-date" type="date" required></label></div>
-          <div class="cs-items-head"><h3>Challan Items</h3><button class="cs-add" type="button" id="cs-add"><i class="fa-solid fa-plus"></i> Add item</button></div>
-          <div class="cs-table-wrap"><table class="cs-table"><thead><tr><th>#</th><th>Product Name / Master SKU</th><th>Size</th><th>Ordered</th><th>Received</th><th>Pending</th><th>Unit Cost (₹)</th><th>Total Cost (₹)</th><th>Action</th></tr></thead><tbody id="cs-rows"></tbody></table></div>
-          <div class="cs-bottom"><div class="cs-upload-area"><label class="cs-drop" for="cs-files"><i class="fa-solid fa-cloud-arrow-up"></i><strong>Upload Challan Image</strong><small>PDF, JPG, PNG · Max 10 MB/file</small><input id="cs-files" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" multiple hidden></label><div class="cs-previews" id="cs-previews"></div></div><div class="cs-actions"><button type="submit" id="cs-save" class="cs-secondary"><i class="fa-solid fa-floppy-disk"></i> Save Challan</button><button type="button" id="cs-push" class="cs-push" disabled><i class="fa-solid fa-boxes-stacked"></i><span>Push Received Stock<small>to Inventory</small></span></button></div></div>
+          <div class="cs-fields"><label>Supplier / Party <em>*</em><input required maxlength="180" id="cs-party" placeholder="Enter supplier name" list="cs-suppliers"><datalist id="cs-suppliers"></datalist></label><label>Invoice No. <em>*</em><input id="cs-number" maxlength="120" required placeholder="PI-2026-001"></label><label>Invoice Date <em>*</em><input id="cs-date" type="date" required></label></div>
+          <div class="cs-items-head"><h3>Invoice Items</h3><button class="cs-add" type="button" id="cs-add">Add Item</button></div>
+          <div id="cs-empty" class="cs-empty"><span class="cs-empty-illustration"><i class="fa-solid fa-box-open" aria-hidden="true"></i></span><h4>No items yet</h4><p>Click <strong>Add Item</strong> to start entering products. Nothing is added automatically.</p></div><div class="cs-table-wrap" id="cs-table-wrap" hidden><table class="cs-table"><thead><tr><th>#</th><th>Product Name / Master SKU</th><th>Size</th><th>Ordered</th><th>Received</th><th>Pending</th><th>Unit Cost (₹)</th><th>Total Cost (₹)</th><th>Action</th></tr></thead><tbody id="cs-rows"></tbody></table></div>
+          <div class="cs-bottom"><div class="cs-upload-area"><label class="cs-drop" for="cs-files"><i class="fa-solid fa-cloud-arrow-up"></i><strong>Attach Supplier Invoice</strong><small>PDF, JPG, PNG · Max 10 MB/file</small><input id="cs-files" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" multiple hidden></label><div class="cs-previews" id="cs-previews"></div></div><div class="cs-actions"><button type="submit" id="cs-save" class="cs-secondary"><i class="fa-solid fa-floppy-disk"></i> Save Invoice</button><button type="button" id="cs-push" class="cs-push" disabled><i class="fa-solid fa-boxes-stacked"></i><span>Push Received Stock<small>to Inventory</small></span></button></div></div>
           <p class="cs-notice">Inventory stock changes only after saving and confirming a fully received challan. A challan can be pushed once.</p><p id="cs-message" role="status" aria-live="polite" class="cs-message"></p>
         </form>
       </section>
       <div class="challan-summary" id="challan-summary"><span>Loading challans…</span></div>
       <div class="challan-layout">
-        <details class="cs-legacy-import"><summary>Import from Excel / CSV (existing workflow)</summary>
+        <details class="cs-legacy-import"><summary>Import Invoice from Excel / CSV</summary>
         <form id="challan-import-form" class="panel challan-form">
           <h2><i class="fa-solid fa-file-arrow-up"></i> Import supplier challan</h2>
           <div class="challan-form-grid">
@@ -259,13 +260,13 @@
             <label class="field">Invoice Number (optional)<input class="input" name="invoice_no" maxlength="120" placeholder="INV-001"></label>
             <label class="field">Order Date<input class="input" name="order_date" type="date" required></label>
           </div>
-          <label class="field">Upload Excel / CSV<input class="input" type="file" name="file" accept=".xlsx,.xls,.csv" required></label>
+          <label class="field invoice-file-zone" for="invoice-excel-file"><span class="invoice-file-icon"><i class="fa-solid fa-file-excel"></i></span><strong>Choose an Excel / CSV file</strong><small id="invoice-file-name">.xlsx, .xls or .csv · Max 12 MB</small><input id="invoice-excel-file" class="input" type="file" name="file" accept=".xlsx,.xls,.csv" required></label><a class="invoice-template-link" href="/api/purchase-challans/template" download><i class="fa-solid fa-download"></i> Download Sample Excel Template</a>
           <p class="hint">Simple Excel: <strong>Product Name · Size · Qty</strong>. After import, enter how many pieces arrived and their purchase rate before pushing to stock.</p>
           <label class="field challan-invoice-upload">Challan / invoice scan (optional)<input class="input" type="file" name="invoice_images" accept="image/jpeg,image/png,image/webp,application/pdf" multiple><small class="hint">Upload up to 12 photos/PDFs for this entire bill, including multiple products.</small></label>
-          <button type="submit" class="btn-primary"><i class="fa-solid fa-upload"></i> Import Pending Challan</button>
+          <button type="submit" class="btn-primary"><i class="fa-solid fa-upload"></i> Import Invoice</button>
           <p id="challan-import-message" class="msg" aria-live="polite"></p>
         </form>
-        </details><div class="panel myraa-challan-records"><div class="challan-list-heading"><h2>Supplier Challan Records</h2><small>Search by party, bill, product or date</small></div><div class="challan-search-row"><label class="field">Search<input id="challan-search" class="input" type="search" placeholder="Party, challan number, product..."></label><label class="field">Date<input id="challan-filter-date" class="input" type="date"></label><button id="challan-clear-filters" class="btn-secondary" type="button">Clear</button></div><div id="challan-batches" class="challan-batches"><p class="hint">No purchase challans yet.</p></div><div class="myraa-pagination" id="challan-list-pagination"><button id="challan-page-prev" class="btn-secondary" type="button">← Previous</button><span id="challan-page-status" aria-live="polite">0 of 0</span><button id="challan-page-next" class="btn-secondary" type="button">Next →</button></div></div>
+        </details><div class="panel myraa-challan-records"><div class="challan-list-heading"><div><h2>Supplier Invoice Records</h2><small>Open, edit and download saved invoices</small></div><a href="/api/purchase-challans/export-records" class="btn-secondary invoice-export-records" download="MYRAA_Purchase_Invoices.xlsx"><i class="fa-solid fa-file-excel"></i> Export All Records</a></div><div class="challan-search-row"><label class="field">Search<input id="challan-search" class="input" type="search" placeholder="Party, challan number, product..."></label><label class="field">Date<input id="challan-filter-date" class="input" type="date"></label><button id="challan-clear-filters" class="btn-secondary" type="button">Clear</button></div><div id="challan-batches" class="challan-batches" role="region" aria-label="Saved supplier invoices"><p class="hint">No invoices yet.</p></div><div class="myraa-pagination" id="challan-list-pagination"><button id="challan-page-prev" class="btn-secondary" type="button">← Previous</button><span id="challan-page-status" aria-live="polite">0 of 0</span><button id="challan-page-next" class="btn-secondary" type="button">Next →</button></div></div>
       </div>
       <section class="panel challan-detail-panel" id="challan-detail-panel" hidden>
         <div id="challan-detail"></div>
@@ -513,6 +514,7 @@
 <script src="product-challan-pages.js?v=3"></script>
 <script src="myraa-challan-studio.js?v=1"></script>
 <script src="seller-sounds.js?v=1"></script>
-<script src="clerk-auth.js?v=6"></script>
+<script src="clerk-auth.js?v=7"></script>
+<script src="myraa-ui-refresh.js?v=1"></script>
 </body>
 </html>

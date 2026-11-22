@@ -204,8 +204,11 @@ def health():
 
 @app.get("/", include_in_schema=False)
 def app_home():
-    """Open the inventory UI directly from the Railway service root."""
-    return RedirectResponse(url="/app/", status_code=307)
+    """Public marketing home; Clerk-protected seller application remains under /app/."""
+    landing = FRONTEND_DIR / "landing.html"
+    if not landing.is_file():
+        return RedirectResponse(url="/app/sign-in.html", status_code=307)
+    return FileResponse(landing)
 
 XLSX_MEDIA = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 

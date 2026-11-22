@@ -443,6 +443,31 @@ def download_challan_template():
 
 
 
+
+
+@router.get("/purchase-challans/export-records")
+def export_all_invoice_records(db: Session = Depends(get_db)):
+    """Export invoice records scoped to the authenticated seller's tenant database."""
+    rows = [["Invoice No", "Supplier / Party", "Invoice Date", "Status",
+             "Product", "Master SKU", "Size", "Ordered", "Received",
+             "Pending", "Unit Cost INR", "Received Value INR"]]
+    batches = (db.query(PurchaseChallan)
+               .options(selectinload(PurchaseChallan.lines))
+               .order_by(PurchaseChallan.id.desc()).all())
+    for batch in batches:
+        for line in batch.lines:
+            cost = float(line.unit_cost) if line.unit_cost is not None else None
+            rows.append([batch.challan_no, batch.party_name, batch.order_date,
+                         batch.status, line.name, line.sku, line.size,
+                         line.qty_ordered, line.qty_received,
+                         line.qty_ordered - line.qty_received,
+                         cost if cost is not None else "",
+                         round(cost * line.qty_received, 2) if cost is not None else ""])
+    filename = "MYRAA_Purchase_Invoices.xlsx"
+    return StreamingResponse(io.BytesIO(_simple_xlsx(rows)),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
 @router.get("/purchase-challans/{batch_id}")
 def get_purchase_challan(batch_id: int, db: Session = Depends(get_db)):
     b = db.query(PurchaseChallan).options(selectinload(PurchaseChallan.lines)).filter_by(id=batch_id).first()

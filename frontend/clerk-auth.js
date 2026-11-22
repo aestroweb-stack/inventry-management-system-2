@@ -84,13 +84,10 @@
   function refreshAppProfile(user) {
     if (!user) return;
     const avatar=$('workspace-user-profile');
-    if(avatar) {avatar.textContent=(user.display_name || 'M').charAt(0).toUpperCase();avatar.title=`${user.display_name} · ${user.role}`;}
+    if(avatar) {const initial=avatar.querySelector('.workspace-avatar-initial'); if(initial)initial.textContent=(user.display_name || 'M').charAt(0).toUpperCase(); else avatar.textContent=(user.display_name || 'M').charAt(0).toUpperCase();avatar.title=`${user.display_name} · ${user.role}`;}
+    const name=$('workspace-user-name');if(name)name.textContent=user.display_name||'My account';
     if($('logout-button')) $('logout-button').hidden=false;
-    const crumb=document.querySelector('.workspace-breadcrumb');
-    if(crumb && !crumb.querySelector('.workspace-user-note')) {
-      const tag=document.createElement('div'); tag.className='workspace-user-note';
-      tag.textContent=`${user.display_name} · ${user.role}`; crumb.append(tag);
-    }
+    // The full account label lives inside the profile menu, not in the cramped brand breadcrumb.
   }
   async function signOut() {
     await removeBackendSession();
@@ -127,7 +124,7 @@
     await startClerk();
     clerk.addListener(()=>onClerkChanged().catch(e=>statusLine(e.message)));
     if (hasSession()) await exchange();
-    else await setLoginView('signin');
+    else await setLoginView(new URLSearchParams(location.search).get('mode')==='signup'?'signup':'signin');
   }
   async function initAppPage() {
     // No unverified cookie can authenticate the backend. Clerk auth must exist.
