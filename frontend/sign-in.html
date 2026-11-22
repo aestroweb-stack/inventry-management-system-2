@@ -4,30 +4,33 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>MYRAA · Secure Login</title>
 <link rel="icon" href="assets/myraa-favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="clerk-auth.css?v=2">
+<link rel="stylesheet" href="clerk-auth.css?v=3">
 </head>
 <body data-myraa-clerk="login">
 <main class="clerk-shell">
   <section class="clerk-brand">
     <a href="/" class="clerk-wordmark"><img src="assets/myraa-mark.svg" alt="" width="47" height="47"> MYRAA</a>
-    <div class="clerk-brand-content"><span class="clerk-eyebrow">MYRAA INVENTORY WORKSPACE</span>
-      <h1>Smarter inventory.<br>A private workspace for every seller.</h1>
-      <p>Your private inventory workspace for products, scanning, packing picklists, and supplier invoices.</p>
+    <div class="clerk-brand-content"><span class="clerk-eyebrow">A WORKSPACE FOR EVERY SELLER</span>
+      <h1>All your inventory.<br>One clear workspace.</h1>
+      <p>Manage products, stock, orders and supplier invoices in a private workspace built for fashion sellers.</p>
       <div class="clerk-lady"><img src="assets/myraa-lady-full.webp" alt="MYRAA assistant character" loading="eager"></div>
     </div>
   </section>
   <section class="clerk-auth-pane">
     <div class="clerk-auth-card">
-      <div class="clerk-top-label">SECURE MYRAA SIGN IN</div>
-      <h2>Welcome back</h2><p>Continue with Google, email + password, or email OTP.</p>
-      <div class="clerk-tab-list"><button type="button" class="clerk-tab active" id="clerk-tab-login">Sign in</button>
-      <button type="button" class="clerk-tab" id="clerk-tab-signup">Create account</button></div>
-      <div id="clerk-auth-root" class="clerk-auth-root" aria-live="polite"><p>Loading secure sign in…</p></div>
+      <div class="clerk-top-label" id="clerk-auth-eyebrow">MYRAA · ACCOUNT ACCESS</div>
+      <h2 id="clerk-auth-title">Welcome back</h2>
+      <p id="clerk-auth-subtitle">Sign in securely with Google, email or password.</p>
+      <div class="clerk-tab-list" role="tablist" aria-label="Account access">
+        <button type="button" class="clerk-tab active" role="tab" aria-selected="true" aria-controls="clerk-auth-root" id="clerk-tab-login">Sign in</button>
+        <button type="button" class="clerk-tab" role="tab" aria-selected="false" aria-controls="clerk-auth-root" id="clerk-tab-signup">Create account</button>
+      </div>
+      <div id="clerk-auth-root" class="clerk-auth-root" role="tabpanel" aria-labelledby="clerk-tab-login" aria-live="polite"><p>Loading secure sign in…</p></div>
       <p id="clerk-auth-error" class="clerk-auth-error" role="alert"></p>
-      <div class="clerk-security-caption">Google, email and password sign-in powered by Clerk · No approval needed</div><div class="clerk-recovery"><button type="button" id="clerk-forgot-password" class="clerk-recovery-link">Forgot password?</button><p id="clerk-recovery-hint" aria-live="polite">Enter your email in Sign in, continue to Password, then use Clerk’s reset password option.</p></div>
+      <p class="clerk-security-caption">Secure authentication by Clerk · Your store data stays private</p>
     </div>
   </section>
 </main>
-<script src="clerk-auth.js?v=8"></script>
+<script src="clerk-auth.js?v=9"></script>
 </body>
 </html>

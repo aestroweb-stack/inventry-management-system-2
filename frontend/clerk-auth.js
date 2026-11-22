@@ -6,6 +6,10 @@
   const loginPage = document.body.dataset.myraaClerk === 'login';
   const home = '/app/';
   const loginPageUrl = '/app/sign-in.html';
+  // Both Clerk screens are mounted INSIDE the MYRAA sign-in page.
+  // Explicit local URLs prevent Clerk's default Account Portal redirects.
+  const localAuthUrl = (view) => `${loginPageUrl}?mode=${view === 'signup' ? 'signup' : 'signin'}`;
+  let currentLoginView = null;
   const statusLine = (message) => {
     const el = $('clerk-auth-error') || $('myraa-login-error');
     if (el) el.textContent = message || '';
@@ -105,34 +109,104 @@
     }
     if(loginPage) await exchange();
   }
-  async function setLoginView(view) {
+  // Give Clerk its own (flush, not card-in-card) appearance within our MYRAA shell.
+  // Official Clerk components continue to handle Google, email OTP, passwords and recovery.
+  const loginAppearance = {
+    options: {elevation:'flush', socialButtonsPlacement:'top', logoLinkUrl:'/'},
+    variables: {
+      colorPrimary:'#08765b', colorText:'#173b33', colorTextSecondary:'#5e746c',
+      colorBackground:'#ffffff', colorInputBackground:'#ffffff',
+      colorInputText:'#173b33', borderRadius:'12px',
+      fontFamily:'Inter, Segoe UI, Arial, sans-serif'
+    }
+  };
+  function showLoginHeading(view) {
+    const signup = view === 'signup';
+    const title=$('clerk-auth-title');
+    const subtitle=$('clerk-auth-subtitle');
+    const eyebrow=$('clerk-auth-eyebrow');
+    if(title) title.textContent = signup ? 'Create your account' : 'Welcome back';
+    document.title = signup ? 'MYRAA · Create Account' : 'MYRAA · Sign In';
+    if(subtitle) subtitle.textContent = signup
+      ? 'Start your private MYRAA workspace with Google or email.'
+      : 'Sign in securely with Google, email or password.';
+    if(eyebrow) eyebrow.textContent = signup ? 'MYRAA · NEW ACCOUNT' : 'MYRAA · ACCOUNT ACCESS';
+    const panel=$('clerk-auth-root');
+    if(panel) panel.setAttribute('aria-labelledby',signup?'clerk-tab-signup':'clerk-tab-login');
+    for(const [id,selected] of [['clerk-tab-login',!signup],['clerk-tab-signup',signup]]) {
+      const tab=$(id);
+      if(tab) {
+        tab.classList.toggle('active',selected);
+        tab.setAttribute('aria-selected',String(selected));
+        tab.setAttribute('tabindex',selected?'0':'-1');
+      }
+    }
+  }
+  async function setLoginView(requestedView) {
     if(!clerk || hasSession()) return;
+    const view = requestedView === 'signup' ? 'signup' : 'signin';
     const root=$('clerk-auth-root');
-    if (!root) return;
-    try {clerk.unmountSignIn(root);} catch {}
-    try {clerk.unmountSignUp(root);} catch {}
+    if(!root) return;
+    // Clicking the same tab must NOT restart the email/password/OTP flow.
+    if(currentLoginView === view) return;
+    const previousView=currentLoginView;
+    currentLoginView=view;
+    statusLine('');
+    showLoginHeading(view);
+    // Remove Clerk's previous hash route (e.g. #/factor-one) on mode change.
+    // Do not modify redirect_url or external OAuth return URL parameters.
+    const nextUrl=new URL(location.href);
+    nextUrl.searchParams.set('mode',view);
+    nextUrl.hash='';
+    history.replaceState(history.state,'',nextUrl.pathname + nextUrl.search);
+    try {
+      if(previousView==='signup') clerk.unmountSignUp(root);
+      else if(previousView==='signin') clerk.unmountSignIn(root);
+    } catch {} // A failed unmount must not leave the wrong form on screen.
     root.replaceChildren();
-    $('clerk-tab-login')?.classList.toggle('active',view==='signin');
-    $('clerk-tab-signup')?.classList.toggle('active',view==='signup');
-    const opts={routing:'hash',signInForceRedirectUrl:loginPageUrl,signUpForceRedirectUrl:loginPageUrl};
-    if (view==='signup') clerk.mountSignUp(root,opts);
-    else clerk.mountSignIn(root,opts);
+    const props={
+      routing:'hash',
+      signInUrl:localAuthUrl('signin'),
+      signUpUrl:localAuthUrl('signup'),
+      signInForceRedirectUrl:loginPageUrl,
+      signUpForceRedirectUrl:loginPageUrl,
+      appearance:loginAppearance
+    };
+    try {
+      if(view==='signup') clerk.mountSignUp(root,props);
+      else clerk.mountSignIn(root,props);
+    } catch(error) {
+      currentLoginView=null;
+      throw error;
+    }
   }
   async function initLoginPage() {
-    $('clerk-tab-login')?.addEventListener('click',()=>setLoginView('signin').catch(e=>statusLine(e.message)));
-    $('clerk-tab-signup')?.addEventListener('click',()=>setLoginView('signup').catch(e=>statusLine(e.message)));
-    $('clerk-forgot-password')?.addEventListener('click',async()=>{
-      try {
-        await setLoginView('signin');
-        const hint=$('clerk-recovery-hint');
-        if(hint)hint.textContent='Enter your email and choose Continue. On Clerk’s password screen select Forgot password to receive a verification code.';
-        $('clerk-auth-root')?.scrollIntoView({behavior:'smooth',block:'center'});
-      }catch(error){statusLine(error.message);}
-    });
+    const signinTab=$('clerk-tab-login');
+    const signupTab=$('clerk-tab-signup');
+    signinTab?.addEventListener('click',()=>setLoginView('signin').catch(e=>statusLine(e.message)));
+    signupTab?.addEventListener('click',()=>setLoginView('signup').catch(e=>statusLine(e.message)));
+    // Clerk's internal "Sign up"/"Sign in" anchors should swap the in-page
+    // widget, never navigate to an external Account Portal or another layout.
+    $('clerk-auth-root')?.addEventListener('click',(event)=>{
+      if(event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+      const link=event.target.closest?.('a[href]');
+      if(!link || link.target && link.target !== '_self') return;
+      let target;
+      try { target=new URL(link.href, location.href); } catch { return; }
+      if(target.origin !== location.origin || target.pathname !== loginPageUrl) return;
+      const mode=target.searchParams.get('mode');
+      if(mode!=='signin' && mode!=='signup') return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      setLoginView(mode).catch(e=>statusLine(e.message));
+    },true);
+    // There is NO universal "Forgot password?" button outside the form.
+    // Clerk shows its real password reset action ONLY at the password step,
+    // including email verification and safe password updating.
     await startClerk();
     clerk.addListener(()=>onClerkChanged().catch(e=>statusLine(e.message)));
     if (hasSession()) await exchange();
-    else await setLoginView(new URLSearchParams(location.search).get('mode')==='signup'?'signup':'signin');
+    else await setLoginView(new URLSearchParams(location.search).get('mode'));
   }
   async function initAppPage() {
     // No unverified cookie can authenticate the backend. Clerk auth must exist.
