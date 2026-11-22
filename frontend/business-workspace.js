@@ -199,13 +199,13 @@
   if (!challanView) return;
   let selectedId=null, selected=null, challanRows=[], challanPage=0, challanTotal=0;
   const PAGE_SIZE=6;
-  let searchTimer=null, requestVersion=0;
+  let searchTimer=null, requestVersion=0, openingInvoice=false;
   function renderChallanList(){
     const listing=$('challan-batches');if(!listing)return;
     const page=challanRows;
     const totalPages=Math.max(1,Math.ceil(challanTotal/PAGE_SIZE));
     listing.innerHTML=page.length ? `<div class="invoice-records-scroll"><table class="invoice-records-table"><thead><tr><th>Invoice No.</th><th>Supplier / Party</th><th>Date</th><th>Items</th><th>Received / Ordered</th><th>Value</th><th>Status</th><th>Actions</th></tr></thead><tbody>${page.map(b=>`<tr class="${b.id===selectedId?'is-selected':''}"><td><strong>${E(b.challan_no)}</strong><small>${E(b.invoice_no||'')}</small></td><td>${E(b.party_name)}</td><td>${E(b.order_date)}</td><td>${(b.lines||[]).length}</td><td>${b.received} / ${b.ordered} pcs</td><td>${money(b.received_value_known)}</td><td><span class="invoice-status invoice-status-${E(b.status)}">${E(b.status)}</span></td><td class="invoice-record-actions"><button type="button" data-id="${b.id}" data-action="view" aria-label="View invoice ${E(b.challan_no)}"><i class="fa-regular fa-eye"></i> View</button><button type="button" data-id="${b.id}" data-action="edit" ${b.status==='POSTED'?'disabled title="Posted invoices cannot be edited"':''} aria-label="Edit invoice ${E(b.challan_no)}"><i class="fa-solid fa-pen"></i> Edit</button><a href="/api/purchase-challans/${b.id}/export" download="MYRAA_Invoice_${b.id}.xlsx" aria-label="Download invoice ${E(b.challan_no)} Excel"><i class="fa-solid fa-file-excel"></i> Excel</a></td></tr>`).join('')}</tbody></table></div>` : '<div class="invoice-no-records"><i class="fa-regular fa-folder-open"></i><strong>No saved invoices found</strong><span>Try clearing the search filters or create your first invoice.</span></div>';
-    listing.querySelectorAll('button[data-id]').forEach(button=>button.addEventListener('click',()=>openChallan(Number(button.dataset.id),button.dataset.action)));
+    listing.querySelectorAll('button[data-id]').forEach(button=>button.addEventListener('click',()=>openChallan(Number(button.dataset.id),button.dataset.action,button)));
     if($('challan-page-status'))$('challan-page-status').textContent=challanTotal ? `${challanPage*PAGE_SIZE+1}–${Math.min((challanPage+1)*PAGE_SIZE,challanTotal)} of ${challanTotal}`:'0 of 0';
     if($('challan-page-prev'))$('challan-page-prev').disabled=challanPage===0;
     if($('challan-page-next'))$('challan-page-next').disabled=challanPage>=totalPages-1;
@@ -241,24 +241,36 @@
       challanRows=data.items||[];
       challanTotal=Number(data.total||0);
       renderChallanList();
-      if(selectedId){
-        const current=challanRows.find(x=>x.id===selectedId);
-        if(current) {selected=await json(`/api/purchase-challans/${selectedId}`);renderChallan();}
-      }
+      // Do not rehydrate the open invoice on every list refresh.
+      // Doing so silently discarded unsaved edits and looked like a frozen form.
     }catch(err){listing.innerHTML=`<p class="business-message is-error">${E(err.message)}</p>`;}
   }
   window.myraaLoadChallans=loadChallans;
   window.myraaOpenChallan=openChallan;
   window.myraaClearChallanSelection=()=>{selectedId=null;selected=null;};
-  async function openChallan(id, mode='view'){
-    try{selected=await json(`/api/purchase-challans/${id}`);selectedId=id;renderChallan();renderChallanList();
-      if(window.myraaChallanStudio?.onSelected){const studio=$('myraa-challan-studio');studio?.scrollIntoView({behavior:'smooth',block:'start'});if(mode==='edit')$('cs-party')?.focus({preventScroll:true});}
-      else $('challan-detail-panel')?.scrollIntoView({behavior:'smooth',block:'start'});}
-    catch(err){window.alert(`Could not load challan: ${err.message}`);}
+  async function openChallan(id, mode='view', button=null){
+    if(openingInvoice)return;
+    openingInvoice=true;
+    const controller=new AbortController();
+    const timeout=setTimeout(()=>controller.abort(),15000);
+    if(button){button.disabled=true;button.setAttribute('aria-busy','true');}
+    try{
+      const loaded=await json(`/api/purchase-challans/${id}`,{signal:controller.signal});
+      selected=loaded;selectedId=id;
+      renderChallan(mode);renderChallanList();
+      if(window.myraaChallanStudio?.onSelected){
+        const studio=$('myraa-challan-studio');studio?.scrollIntoView({behavior:'smooth',block:'start'});
+        if(mode==='edit')$('cs-party')?.focus({preventScroll:true});
+      }else $('challan-detail-panel')?.scrollIntoView({behavior:'smooth',block:'start'});
+    }catch(error){window.alert(`Could not open invoice: ${error.name==='AbortError'?'Request timed out; please retry.':error.message}`);}
+    finally{
+      clearTimeout(timeout);openingInvoice=false;
+      if(button?.isConnected){button.disabled=false;button.removeAttribute('aria-busy');}
+    }
   }
-  function renderChallan(){
+  function renderChallan(mode='edit'){
     if(window.myraaChallanStudio?.onSelected){
-      window.myraaChallanStudio.onSelected(selected);
+      window.myraaChallanStudio.onSelected(selected,mode);
       const old=$('challan-detail-panel');if(old)old.hidden=true;
       return;
     }

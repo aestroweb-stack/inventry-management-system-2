@@ -17,7 +17,7 @@
   <link rel="stylesheet" href="seller-workspace.css?v=1">
 <link rel="stylesheet" href="workspace-auth.css?v=5">
 <link rel="stylesheet" href="clerk-auth.css?v=1">
-<link rel="stylesheet" href="myraa-ui-refresh.css?v=1">
+<link rel="stylesheet" href="myraa-ui-refresh.css?v=2">
 </head>
 <body>
 
@@ -246,7 +246,7 @@
           <div class="cs-items-head"><h3>Invoice Items</h3><button class="cs-add" type="button" id="cs-add">Add Item</button></div>
           <div id="cs-empty" class="cs-empty"><span class="cs-empty-illustration"><i class="fa-solid fa-box-open" aria-hidden="true"></i></span><h4>No items yet</h4><p>Click <strong>Add Item</strong> to start entering products. Nothing is added automatically.</p></div><div class="cs-table-wrap" id="cs-table-wrap" hidden><table class="cs-table"><thead><tr><th>#</th><th>Product Name / Master SKU</th><th>Size</th><th>Ordered</th><th>Received</th><th>Pending</th><th>Unit Cost (₹)</th><th>Total Cost (₹)</th><th>Action</th></tr></thead><tbody id="cs-rows"></tbody></table></div>
           <div class="cs-bottom"><div class="cs-upload-area"><label class="cs-drop" for="cs-files"><i class="fa-solid fa-cloud-arrow-up"></i><strong>Attach Supplier Invoice</strong><small>PDF, JPG, PNG · Max 10 MB/file</small><input id="cs-files" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" multiple hidden></label><div class="cs-previews" id="cs-previews"></div></div><div class="cs-actions"><button type="submit" id="cs-save" class="cs-secondary"><i class="fa-solid fa-floppy-disk"></i> Save Invoice</button><button type="button" id="cs-push" class="cs-push" disabled><i class="fa-solid fa-boxes-stacked"></i><span>Push Received Stock<small>to Inventory</small></span></button></div></div>
-          <p class="cs-notice">Inventory stock changes only after saving and confirming a fully received challan. A challan can be pushed once.</p><p id="cs-message" role="status" aria-live="polite" class="cs-message"></p>
+          <p class="cs-notice">Inventory stock changes only after saving and confirming a fully received challan. A challan can be pushed once.</p><p id="cs-message" role="status" aria-live="polite" class="cs-message"></p><button type="button" id="cs-last-open" class="cs-last-open" hidden>Open saved invoice</button>
         </form>
       </section>
       <div class="challan-summary" id="challan-summary"><span>Loading challans…</span></div>
@@ -510,11 +510,11 @@
 <script src="app.js?v=myraa-seller-v3"></script>
 <script src="myraa-signature-v3.js?v=3"></script>
 <script src="packing-picklist.js?v=4"></script>
-<script src="business-workspace.js?v=5"></script>
+<script src="business-workspace.js?v=6"></script>
 <script src="product-challan-pages.js?v=3"></script>
-<script src="myraa-challan-studio.js?v=1"></script>
+<script src="myraa-challan-studio.js?v=2"></script>
 <script src="seller-sounds.js?v=1"></script>
-<script src="clerk-auth.js?v=7"></script>
+<script src="clerk-auth.js?v=8"></script>
 <script src="myraa-ui-refresh.js?v=1"></script>
 </body>
 </html>

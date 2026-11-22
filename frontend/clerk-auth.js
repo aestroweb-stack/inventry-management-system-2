@@ -121,6 +121,14 @@
   async function initLoginPage() {
     $('clerk-tab-login')?.addEventListener('click',()=>setLoginView('signin').catch(e=>statusLine(e.message)));
     $('clerk-tab-signup')?.addEventListener('click',()=>setLoginView('signup').catch(e=>statusLine(e.message)));
+    $('clerk-forgot-password')?.addEventListener('click',async()=>{
+      try {
+        await setLoginView('signin');
+        const hint=$('clerk-recovery-hint');
+        if(hint)hint.textContent='Enter your email and choose Continue. On Clerk’s password screen select Forgot password to receive a verification code.';
+        $('clerk-auth-root')?.scrollIntoView({behavior:'smooth',block:'center'});
+      }catch(error){statusLine(error.message);}
+    });
     await startClerk();
     clerk.addListener(()=>onClerkChanged().catch(e=>statusLine(e.message)));
     if (hasSession()) await exchange();

@@ -4,7 +4,7 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>MYRAA · Secure Login</title>
 <link rel="icon" href="assets/myraa-favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="clerk-auth.css?v=1">
+<link rel="stylesheet" href="clerk-auth.css?v=2">
 </head>
 <body data-myraa-clerk="login">
 <main class="clerk-shell">
@@ -24,10 +24,10 @@
       <button type="button" class="clerk-tab" id="clerk-tab-signup">Create account</button></div>
       <div id="clerk-auth-root" class="clerk-auth-root" aria-live="polite"><p>Loading secure sign in…</p></div>
       <p id="clerk-auth-error" class="clerk-auth-error" role="alert"></p>
-      <div class="clerk-security-caption">Google, email and password sign-in powered by Clerk · No approval needed</div><p class="clerk-help-copy">Forgot your password? Choose <strong>Sign in</strong> and use Clerk’s password recovery link.</p>
+      <div class="clerk-security-caption">Google, email and password sign-in powered by Clerk · No approval needed</div><div class="clerk-recovery"><button type="button" id="clerk-forgot-password" class="clerk-recovery-link">Forgot password?</button><p id="clerk-recovery-hint" aria-live="polite">Enter your email in Sign in, continue to Password, then use Clerk’s reset password option.</p></div>
     </div>
   </section>
 </main>
-<script src="clerk-auth.js?v=7"></script>
+<script src="clerk-auth.js?v=8"></script>
 </body>
 </html>

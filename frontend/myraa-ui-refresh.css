@@ -49,3 +49,23 @@
 @media(max-width:850px){.workspace-topbar{grid-template-columns:minmax(0,1fr) auto}.workspace-breadcrumb{display:none}.workspace-top-actions #workspace-photo-search{font-size:0}.workspace-top-actions #workspace-photo-search i{font-size:14px}.cs-legacy-import .challan-form-grid{grid-template-columns:1fr 1fr}}
 @media(max-width:600px){.workspace-topbar{padding:11px!important}.workspace-global-search kbd,.workspace-user-name,.workspace-top-actions #sound-toggle{display:none!important}.workspace-top-actions #workspace-user-profile{min-width:42px;padding:4px;width:43px}.workspace-top-actions #workspace-user-profile i{display:none}.cs-legacy-import .challan-form-grid,.cs-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.cs-fields{grid-template-columns:1fr}.challan-list-heading{align-items:flex-start}#view-challans .challan-search-row{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}#view-challans .challan-search-row button{grid-column:1/-1}.invoice-export-records{width:100%;justify-content:center}}
 @media(max-width:420px){.cs-legacy-import .challan-form-grid,.cs-stats{grid-template-columns:1fr}.cs-header-actions{flex-wrap:wrap}.cs-stat{min-height:68px}}
+
+/* MYRAA UX polish — invoice pagination, actions, theme, and loading feedback. */
+#view-challans #challan-list-pagination.myraa-pagination{display:flex!important;align-items:center;justify-content:flex-start;flex-wrap:wrap;column-gap:16px;row-gap:12px;padding:17px 2px 4px;min-height:58px}
+#view-challans #challan-list-pagination .btn-secondary{display:inline-flex;justify-content:center;align-items:center;flex:0 0 auto;min-width:112px;min-height:43px;padding:10px 16px;border-radius:12px;line-height:1.25;white-space:nowrap}
+#view-challans #challan-page-status{display:inline-block;min-width:85px;text-align:center;white-space:nowrap;font-size:13px;font-weight:730;color:var(--ink);font-variant-numeric:tabular-nums}
+#view-challans #challan-list-pagination button:disabled{opacity:.42;cursor:not-allowed;filter:saturate(.55)}
+#view-challans .invoice-record-actions{display:flex;gap:8px;align-items:center}
+#view-challans .invoice-record-actions button[aria-busy="true"]{opacity:.6;cursor:progress}
+#view-challans .invoice-record-actions button:focus-visible,#view-challans .invoice-record-actions a:focus-visible,#view-challans #challan-list-pagination button:focus-visible{outline:3px solid #28b78b;outline-offset:2px}
+#view-challans .cs-last-open{display:inline-flex;align-items:center;justify-content:center;margin-top:9px;padding:10px 16px;border:1px solid #8cbda8;border-radius:11px;color:#046143;background:#ebf8f0;font-weight:760;cursor:pointer}
+#view-challans .cs-last-open[hidden]{display:none!important}
+#view-challans .cs-last-open:hover{background:#d8f1e4}
+:root[data-theme="dark"] #view-challans #challan-page-status{color:#d8ede3}
+:root[data-theme="dark"] #view-challans .cs-last-open{background:#1a473b;border-color:#3b7460;color:#def8e7}
+:root[data-theme="dark"] #view-challans #challan-list-pagination .btn-secondary{background:#143b32;border-color:#39765f;color:#e7faf1}
+@media(max-width:540px){#view-challans #challan-list-pagination.myraa-pagination{justify-content:center;column-gap:10px}#view-challans #challan-list-pagination .btn-secondary{min-width:100px;padding:10px 11px}#view-challans #challan-page-status{min-width:76px}}
+
+/* A table cell must remain a table cell; flex here broke table alignment. */
+#view-challans .invoice-records-table td.invoice-record-actions{display:table-cell;vertical-align:middle;white-space:nowrap}
+#view-challans .invoice-records-table td.invoice-record-actions button,#view-challans .invoice-records-table td.invoice-record-actions a{display:inline-flex;vertical-align:middle;margin-right:5px}

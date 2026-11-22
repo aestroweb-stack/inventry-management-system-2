@@ -7,7 +7,7 @@ const escape=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>'
 const money=n=>'₹'+Number(n||0).toLocaleString('en-IN',{maximumFractionDigits:2});
 const row=()=>({name:'',sku:'',size:'',qty_ordered:'',qty_received:0,unit_cost:null});
 const dateToday=()=>new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
-const state={id:null,status:'NEW',invoice_no:'',rows:[],files:[],attachments:[],busy:false};
+const state={id:null,status:'NEW',mode:'edit',invoice_no:'',rows:[],files:[],attachments:[],busy:false};
 const msg=(text,bad=false)=>{const el=$('cs-message');el.textContent=text||'';el.classList.toggle('is-error',bad);};
 const api=async(url,options={})=>{
  const response=await fetch('/api/purchase-challans'+url,{credentials:'same-origin',...options});
@@ -15,7 +15,7 @@ const api=async(url,options={})=>{
  if(!response.ok)throw new Error(typeof data.detail==='string'?data.detail:`HTTP ${response.status}`);
  return data;
 };
-const editable=()=>state.status!=='POSTED';
+const editable=()=>state.status!=='POSTED'&&state.mode!=='view';
 function render(){
  const hasRows=state.rows.length>0;
  $('cs-empty').hidden=hasRows;
@@ -25,8 +25,23 @@ function render(){
   tr.querySelectorAll('[data-field]').forEach(el=>el.addEventListener('input',()=>{
    const k=el.dataset.field;state.rows[i][k]=k==='qty_ordered'||k==='qty_received'?Number(el.value):k==='unit_cost'?(el.value===''?null:Number(el.value)):el.value;calc();
   }));
-  tr.querySelector('.cs-delete').addEventListener('click',()=>{
-    state.rows.splice(i,1);render();msg('Item removed. Save invoice to persist changes.');
+  tr.querySelector('.cs-delete').addEventListener('click',async()=>{
+    if(state.busy||!editable())return;
+    const savedLine=state.rows[i];
+    if(state.id && savedLine?.id){
+      if(!confirm('Permanently delete this saved invoice item? Unsaved changes to other rows will be discarded.'))return;
+      state.busy=true;calc();
+      try {
+        const updated=await api(`/${state.id}/lines/${savedLine.id}`,{method:'DELETE'});
+        select(updated,'edit');
+        window.myraaLoadChallans?.().catch(()=>{});
+        msg('Saved item deleted. This invoice has not changed inventory stock.');
+      }catch(error){msg(error.message,true);}
+      finally{state.busy=false;calc();}
+    } else {
+      state.rows.splice(i,1);render();
+      msg('Unsaved item removed.');
+    }
   });
  });
  calc();
@@ -49,7 +64,7 @@ function calc(){
  const ready=ordered>0 && ordered===received && state.rows.every(r=>r.unit_cost!=null&&r.unit_cost!==''&&Number(r.qty_ordered)>=1);
  $('cs-push').disabled=state.busy||!state.id||!editable()||!ready;
  $('cs-push').title=state.status==='POSTED'?'Already posted':!state.id?'Save challan first':!ready?'All pieces must be received and costed before push':'Push once to inventory';
- $('cs-add').disabled=!editable();$('cs-save').disabled=state.busy||!editable()||!state.rows.length;
+ $('cs-add').disabled=state.busy||!editable();$('cs-save').disabled=state.busy||!editable()||!state.rows.length;
  $('cs-files').disabled=!editable();
 }
 function renderFiles(){
@@ -74,8 +89,8 @@ function renderFiles(){
  }
 }
 function clearFiles(){state.files.forEach(x=>URL.revokeObjectURL(x.url));state.files=[];state.attachments=[];renderFiles();}
-function reset(){state.id=null;state.status='NEW';state.invoice_no='';state.rows=[];clearFiles();for(const id of ['cs-party','cs-number','cs-date'])$(id).disabled=false;$('cs-party').value='';$('cs-number').value='';$('cs-date').value=dateToday();$('cs-export').href='/api/purchase-challans/template';render();msg('New invoice ready. Click Add Item to begin.');window.myraaClearChallanSelection?.();}
-function select(data){state.id=data.id;state.status=data.status;state.invoice_no=data.invoice_no||'';state.rows=(data.lines||[]).map(x=>({name:x.name,sku:x.sku,size:x.size,qty_ordered:x.qty_ordered,qty_received:x.qty_received,unit_cost:x.unit_cost}));if(!state.rows.length)state.rows=[];clearFiles();state.attachments=data.attachments||[];$('cs-party').value=data.party_name;$('cs-number').value=data.challan_no;$('cs-date').value=data.order_date;$('cs-export').href='/api/purchase-challans/'+data.id+'/export';for(const id of ['cs-party','cs-number','cs-date'])$(id).disabled=!editable();render();renderFiles();msg(data.status==='POSTED'?'Posted invoice is read-only. Duplicate stock posting is disabled.':'Invoice loaded. You can edit its details and save.');}
+function reset(){state.id=null;state.status='NEW';state.mode='edit';state.invoice_no='';state.rows=[];clearFiles();for(const id of ['cs-party','cs-number','cs-date'])$(id).disabled=false;$('cs-party').value='';$('cs-number').value='';$('cs-date').value=dateToday();$('cs-export').href='/api/purchase-challans/template';render();$('cs-last-open').hidden=true;msg('New invoice ready. Click Add Item to begin.');window.myraaClearChallanSelection?.();}
+function select(data,mode='edit'){state.id=data.id;state.status=data.status;state.mode=mode;state.invoice_no=data.invoice_no||'';state.rows=(data.lines||[]).map(x=>({id:x.id,name:x.name,sku:x.sku,size:x.size,qty_ordered:x.qty_ordered,qty_received:x.qty_received,unit_cost:x.unit_cost}));clearFiles();state.attachments=data.attachments||[];$('cs-party').value=data.party_name;$('cs-number').value=data.challan_no;$('cs-date').value=data.order_date;$('cs-export').href='/api/purchase-challans/'+data.id+'/export';for(const id of ['cs-party','cs-number','cs-date'])$(id).disabled=!editable();$('cs-last-open').hidden=true;render();renderFiles();msg(data.status==='POSTED'?'Posted invoice is read-only. Duplicate stock posting is disabled.':mode==='view'?'Viewing saved invoice. Choose Edit in records to make changes.':'Invoice loaded. You can edit its details and save.');}
 function payload(){const party=$('cs-party').value.trim(),number=$('cs-number').value.trim(),date=$('cs-date').value;if(!party||!number||!date)throw new Error('Supplier, challan number and date are required.');if(!state.rows.length)throw new Error('Add at least one item.');
 const lines=state.rows.map((r,i)=>{
  const name=String(r.name||'').trim(),size=String(r.size||'').trim().toUpperCase(),ordered=Number(r.qty_ordered),received=Number(r.qty_received);
@@ -84,17 +99,48 @@ const lines=state.rows.map((r,i)=>{
  return {name,sku:String(r.sku||'').trim(),size,qty_ordered:ordered,qty_received:received,unit_cost:r.unit_cost};
  });return {party_name:party,challan_no:number,order_date:date,invoice_no:state.invoice_no,lines};}
 async function uploadQueued(id){if(!state.files.length)return null;const form=new FormData();state.files.forEach(x=>form.append('files',x.file));const response=await fetch(`/api/purchase-challans/${id}/attachments`,{method:'POST',body:form,credentials:'same-origin'});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.detail||`Invoice upload failed: HTTP ${response.status}`);return data;}
-async function save(){if(state.busy||!editable())return;const body=payload();state.busy=true;calc();msg('Saving invoice…');
- try {let saved=await api(state.id?`/${state.id}/manual`:'/manual',{method:state.id?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-  let failedUpload=null;
-  if(state.files.length){try{saved=await uploadQueued(saved.id);}catch(e){failedUpload=e.message;}}
-  select(saved);window.myraaLoadChallans?.();msg(failedUpload?'Saved challan, but invoice upload failed: '+failedUpload:'Invoice saved. Inventory remains unchanged until a confirmed stock push.',!!failedUpload);return saved;
- }catch(e){msg(e.message,true);throw e;}finally{state.busy=false;calc();}}
-$('cs-form').addEventListener('submit',e=>{e.preventDefault();save().catch(()=>{});});
+async function save({stayOpen=false}={}){
+ if(state.busy||!editable())return null;
+ let body;
+ try{body=payload();}catch(error){msg(error.message,true);throw error;}
+ state.busy=true;calc();msg('Saving invoice…');
+ try {
+  let saved=await api(state.id?`/${state.id}/manual`:'/manual',{
+   method:state.id?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(state.files.length){
+   try{saved=await uploadQueued(saved.id);}
+   catch(error){
+    // The invoice is saved, but preserve queued files so the seller can retry.
+    state.id=saved.id;state.status=saved.status;state.invoice_no=saved.invoice_no||'';
+    state.rows=(saved.lines||[]).map(x=>({id:x.id,name:x.name,sku:x.sku,size:x.size,qty_ordered:x.qty_ordered,qty_received:x.qty_received,unit_cost:x.unit_cost}));
+    state.attachments=saved.attachments||[];render();renderFiles();
+    msg('Invoice saved, but attachments failed: '+error.message+'. Retry Save Invoice.',true);
+    window.myraaLoadChallans?.().catch(()=>{});
+    return null;
+   }
+  }
+  if(stayOpen){select(saved,'edit');msg('Invoice saved. Confirm Push Received Stock to update inventory.');}
+  else {
+   reset();
+   const quick=$('cs-last-open');quick.hidden=false;
+   quick.dataset.invoiceId=String(saved.id);
+   quick.textContent=`Open saved invoice ${saved.challan_no} to push stock / edit`;
+   msg(`Invoice ${saved.challan_no} saved. Fresh invoice ready — click Add Item. Inventory has not changed.`);
+  }
+  window.myraaLoadChallans?.().catch(()=>{});
+  return saved;
+ }catch(error){msg(error.message,true);throw error;}
+ finally{state.busy=false;calc();}
+}
+$('cs-form').addEventListener('submit',event=>{event.preventDefault();save().catch(()=>{});});
+$('cs-last-open').addEventListener('click',()=>{
+ const id=Number($('cs-last-open').dataset.invoiceId);
+ if(id>0)window.myraaOpenChallan?.(id,'edit');
+});
 $('cs-new').addEventListener('click',()=>{if(confirm('Start a new invoice? Unsaved changes will be lost.'))reset();});
 $('cs-add').addEventListener('click',()=>{if(!editable())return;if(state.rows.length>=300){msg('Max 300 items.',true);return;}state.rows.push(row());render();$('cs-rows').lastElementChild?.querySelector('.cs-name')?.focus();});
 $('cs-files').addEventListener('change',e=>{const files=Array.from(e.target.files||[]);if(files.length+state.attachments.length+state.files.length>12){msg('Maximum 12 invoices/photos per challan.',true);return;}for(const file of files){if(file.size>10*1024*1024||!['image/jpeg','image/png','image/webp','application/pdf'].includes(file.type)){msg('PDF/JPG/PNG/WEBP up to 10 MB.',true);continue;}state.files.push({file,url:URL.createObjectURL(file)});}renderFiles();e.target.value='';});
-$('cs-push').addEventListener('click',async()=>{if(state.busy||$('cs-push').disabled)return;try{const saved=await save();if(!saved||saved.status!=='READY')return;if(!confirm('Confirm inventory stock addition for all received products? Cannot push this challan twice.'))return;state.busy=true;calc();const result=await api(`/${saved.id}/push`,{method:'POST'});select(await api(`/${saved.id}`));window.myraaLoadChallans?.();window.myraaLoadCosting?.();msg(`Success: ${result.received_pieces||saved.received} pieces added to inventory.`);window.myraaSound?.success?.('Stock updated');}catch(e){msg(e.message,true);window.myraaSound?.error?.();}finally{state.busy=false;calc();}});
+$('cs-push').addEventListener('click',async()=>{if(state.busy||$('cs-push').disabled)return;try{const saved=await save({stayOpen:true});if(!saved||saved.status!=='READY')return;if(!confirm('Confirm inventory stock addition for all received products? Cannot push this challan twice.'))return;state.busy=true;calc();const result=await api(`/${saved.id}/push`,{method:'POST'});select(await api(`/${saved.id}`));window.myraaLoadChallans?.();window.myraaLoadCosting?.();msg(`Success: ${result.received_pieces||saved.received} pieces added to inventory.`);window.myraaSound?.success?.('Stock updated');}catch(e){msg(e.message,true);window.myraaSound?.error?.();}finally{state.busy=false;calc();}});
 $('cs-date').value=dateToday();
 window.myraaChallanStudio={onSelected:select,newChallan:reset};
 reset();

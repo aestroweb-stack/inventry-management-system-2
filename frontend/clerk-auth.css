@@ -26,3 +26,8 @@
 /* Never show the Clerk loading placeholder behind an approved/pending state.
    Explicit display:grid rules otherwise override the browser's [hidden] style. */
 #clerk-auth-root[hidden], #clerk-approval[hidden], .clerk-tab[hidden] { display:none !important; }
+
+.clerk-recovery{margin-top:14px;padding-top:12px;border-top:1px solid var(--clerk-border);text-align:center}
+.clerk-recovery-link{border:0;background:transparent;padding:8px 12px;color:#056e55;text-decoration:underline;font:750 14px/1.4 inherit;cursor:pointer}
+.clerk-recovery-link:focus-visible{outline:3px solid #29a981;outline-offset:3px;border-radius:8px}
+.clerk-recovery p{max-width:370px;margin:4px auto 0;font-size:12px;line-height:1.5;color:#5b766d}

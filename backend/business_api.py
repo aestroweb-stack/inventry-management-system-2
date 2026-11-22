@@ -468,6 +468,35 @@ def export_all_invoice_records(db: Session = Depends(get_db)):
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
+@router.delete('/purchase-challans/{batch_id}/lines/{line_id}')
+def delete_saved_invoice_item(batch_id: int, line_id: int, db: Session = Depends(get_db)):
+    """Remove a saved draft item within the authenticated seller's database.
+
+    Posted invoices cannot be modified because their quantities are in stock.
+    Empty drafts remain OPEN and cannot be pushed to inventory.
+    """
+    batch = db.query(PurchaseChallan).filter_by(id=batch_id).with_for_update().first()
+    if batch is None:
+        raise HTTPException(404, 'Invoice not found')
+    if batch.status == 'POSTED':
+        raise HTTPException(409, 'Posted invoices cannot be changed after stock is added')
+    line = db.query(PurchaseChallanLine).filter_by(id=line_id, challan_id=batch_id).first()
+    if line is None:
+        raise HTTPException(404, 'Invoice item not found')
+    db.delete(line)
+    db.flush()
+    remaining = db.query(PurchaseChallanLine).filter_by(challan_id=batch_id).all()
+    batch.status = _draft_status([
+        {'qty_ordered': x.qty_ordered, 'qty_received': x.qty_received} for x in remaining
+    ])
+    db.commit()
+    db.expire_all()
+    stored = (db.query(PurchaseChallan)
+              .options(selectinload(PurchaseChallan.lines), selectinload(PurchaseChallan.attachments))
+              .filter_by(id=batch_id).one())
+    return serialize_challan(stored)
+
+
 @router.get("/purchase-challans/{batch_id}")
 def get_purchase_challan(batch_id: int, db: Session = Depends(get_db)):
     b = db.query(PurchaseChallan).options(selectinload(PurchaseChallan.lines)).filter_by(id=batch_id).first()
@@ -768,6 +797,7 @@ def _draft_lines(db: Session, draft: ChallanDraft):
 
 
 def _draft_status(lines):
+    if not lines: return 'OPEN'
     return 'READY' if all(x['qty_ordered']==x['qty_received'] for x in lines) else ('PARTIAL' if any(x['qty_received'] for x in lines) else 'OPEN')
 
 @router.post('/purchase-challans/manual',status_code=201)

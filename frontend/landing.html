@@ -5,12 +5,12 @@
 <meta name="description" content="MYRAA inventory management for fashion boutiques, sellers and retailers. Manage products, stock, purchases and orders in a private workspace.">
 <meta name="theme-color" content="#063d31"><title>MYRAA · Inventory for Fashion Sellers</title>
 <link rel="icon" href="/app/assets/myraa-favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/app/myraa-landing.css?v=1">
+<link rel="stylesheet" href="/app/myraa-landing.css?v=2">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
 </head>
 <body>
 <header class="site-header"><div class="site-nav"><a href="/" class="brand" aria-label="MYRAA home"><img src="/app/assets/myraa-mark.svg" alt="" width="41" height="41"><span>MYRAA<small>Inventory for Fashion</small></span></a>
-<nav aria-label="Primary"><a href="#features">Features</a><a href="#workflow">How it works</a><a href="#for-sellers">For sellers</a></nav>
+<nav aria-label="Primary"><a href="#showcase">Product types</a><a href="#features">Features</a><a href="#workflow">How it works</a><a href="#for-sellers">For sellers</a></nav>
 <div class="nav-actions"><a class="nav-login" href="/app/sign-in.html?mode=signin">Login</a><a class="nav-signup" href="/app/sign-in.html?mode=signup">Create Account <span aria-hidden="true">→</span></a></div></div></header>
 <main>
 <section class="hero"><div class="hero-wrap"><div class="hero-copy"><p class="pill"><span class="pill-dot"></span> MADE FOR FASHION SELLERS</p><h1>Smart inventory.<br><em>Simple business.</em></h1><p class="hero-desc">Products, sizes, stock, purchase invoices and marketplace dispatch — manage it all from one easy-to-use workspace.</p><div class="cta-row"><a class="cta-primary" href="/app/sign-in.html?mode=signup">Create a free account <i class="fa-solid fa-arrow-right"></i></a><a class="cta-secondary" href="#workflow"><i class="fa-solid fa-circle-play"></i> See how it works</a></div><div class="hero-points"><span><i class="fa-solid fa-circle-check"></i> Your own private workspace</span><span><i class="fa-solid fa-circle-check"></i> No manual approval</span><span><i class="fa-solid fa-circle-check"></i> Works on any device</span></div></div>
@@ -24,7 +24,29 @@
 <article class="feature-card"><span class="feature-icon green"><i class="fa-solid fa-cart-flatbed"></i></span><h3>Process Orders</h3><p>Import marketplace orders, match SKUs and dispatch items.</p></article>
 <article class="feature-card"><span class="feature-icon purple"><i class="fa-solid fa-file-excel"></i></span><h3>Excel Import & Export</h3><p>Upload supplier invoice spreadsheets and download records.</p></article>
 </div></section>
+
+<section class="showcase-section section" id="showcase" aria-labelledby="showcase-heading">
+ <div class="section-heading"><span class="overline">A HOME FOR EVERY PRODUCT TYPE</span><h2 id="showcase-heading">Your fashion catalog, <em>beautifully organized.</em></h2>
+ <p>Select a category to preview how MYRAA supports different products. These are illustration photos, not live seller stock.</p></div>
+ <div class="showcase-layout">
+  <div class="showcase-feature" aria-live="polite" aria-atomic="true">
+   <img id="showcase-active-image" src="/app/assets/myraa-category-kurtas.webp" alt="Illustrative embroidered kurta catalog example" width="310" height="724" loading="lazy">
+   <div class="showcase-feature-copy"><span class="showcase-eyebrow"><i class="fa-solid fa-tags"></i> PRODUCT EXAMPLE</span><h3 id="showcase-active-name">Kurtas</h3><p id="showcase-active-desc">Track design, size, master SKU, product images and counted stock in one place.</p>
+   <a class="showcase-feature-cta" href="/app/sign-in.html?mode=signup">Organize your own products <i class="fa-solid fa-arrow-right"></i></a></div>
+  </div>
+  <div class="showcase-categories" role="group" aria-label="Choose a sample product category">
+   <button type="button" class="showcase-category is-active" data-category="Kurtas" data-description="Track design, size, master SKU, product images and counted stock in one place." data-image="/app/assets/myraa-category-kurtas.webp" aria-pressed="true"><img src="/app/assets/myraa-category-kurtas.webp" alt="" loading="lazy"><span>Kurtas</span></button>
+   <button type="button" class="showcase-category" data-category="Co-ord Sets" data-description="Manage complete co-ord designs with sizes, photos and stock counts." data-image="/app/assets/myraa-category-co-ord-sets.webp" aria-pressed="false"><img src="/app/assets/myraa-category-co-ord-sets.webp" alt="" loading="lazy"><span>Co-ord Sets</span></button>
+   <button type="button" class="showcase-category" data-category="Dresses" data-description="Keep floral and occasion wear cataloged by style and size." data-image="/app/assets/myraa-category-dresses.webp" aria-pressed="false"><img src="/app/assets/myraa-category-dresses.webp" alt="" loading="lazy"><span>Dresses</span></button>
+   <button type="button" class="showcase-category" data-category="Shirts" data-description="Organize shirt SKUs, size variants and marketplace aliases." data-image="/app/assets/myraa-category-shirts.webp" aria-pressed="false"><img src="/app/assets/myraa-category-shirts.webp" alt="" loading="lazy"><span>Shirts</span></button>
+   <button type="button" class="showcase-category" data-category="Bottoms" data-description="Count trousers and bottoms by size with a clear stock history." data-image="/app/assets/myraa-category-bottoms.webp" aria-pressed="false"><img src="/app/assets/myraa-category-bottoms.webp" alt="" loading="lazy"><span>Bottoms</span></button>
+   <button type="button" class="showcase-category" data-category="Fabrics" data-description="Create product records for your fabric styles and update counts." data-image="/app/assets/myraa-category-fabrics.webp" aria-pressed="false"><img src="/app/assets/myraa-category-fabrics.webp" alt="" loading="lazy"><span>Fabrics</span></button>
+   <button type="button" class="showcase-category" data-category="Accessories" data-description="Catalog accessory SKUs and product photos alongside clothing." data-image="/app/assets/myraa-category-accessories.webp" aria-pressed="false"><img src="/app/assets/myraa-category-accessories.webp" alt="" loading="lazy"><span>Accessories</span></button>
+  </div>
+ </div>
+</section>
 <section class="workflow section" id="workflow"><div class="section-heading"><span class="overline">START IN THREE STEPS</span><h2>Up and running <em>without the hassle.</em></h2></div><div class="steps"><div><span class="step-num">01</span><i class="fa-solid fa-user-plus"></i><h3>Create your account</h3><p>Sign up through Clerk with supported Google or email methods.</p></div><div><span class="step-num">02</span><i class="fa-solid fa-tags"></i><h3>Add products</h3><p>Organize styles, sizes and stock in your private inventory.</p></div><div><span class="step-num">03</span><i class="fa-solid fa-chart-line"></i><h3>Run your day</h3><p>Manage scanning, purchasing, stock and marketplace dispatch.</p></div></div></section>
 <section class="seller-section" id="for-sellers"><div class="seller-content"><div><span class="overline">YOUR STORE, YOUR WORKSPACE</span><h2>Designed for the seller<br><em>behind every product.</em></h2><p>Each seller has a separate account and inventory workspace, with their own store profile. Start with an empty catalog and build your business your way.</p><div class="seller-links"><a class="cta-primary" href="/app/sign-in.html?mode=signup">Create Account <i class="fa-solid fa-arrow-right"></i></a><a class="cta-secondary" href="/app/sign-in.html?mode=signin">Already have an account? Login</a></div></div><img src="/app/assets/myraa-lady-portrait.webp" alt="MYRAA fashion inventory assistant character" loading="lazy"></div></section>
 </main><footer><div><a href="/" class="footer-brand">MYRAA</a><p>Fashion inventory, made easier.</p></div><div><span>© 2026 Hacker Room</span><a href="tel:+918630404031">+91 8630404031</a><a href="mailto:aestroweb@gmail.com">aestroweb@gmail.com</a></div></footer>
+<script src="/app/myraa-landing.js?v=1" defer></script>
 </body></html>
