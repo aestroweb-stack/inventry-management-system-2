@@ -142,70 +142,97 @@
       }
     }
   }
+  // Clerk uses asynchronous UI rendering. Unmounting one component and mounting
+  // another into the SAME node during a tab click can clear the new component
+  // after mountSignUp()/mountSignIn() returns, leaving an empty MYRAA card.
+  // Navigate to this very same MYRAA page for the alternate mode. The page
+  // loads a fresh Clerk instance and mounts exactly one component once.
+  function navigateLoginView(requestedView) {
+    const view=requestedView === 'signup' ? 'signup' : 'signin';
+    if(view===currentLoginView) return;
+    const next=new URL(location.href);
+    next.pathname=loginPageUrl;
+    next.searchParams.set('mode',view);
+    next.hash=''; // Discard the previous Clerk hash sub-route.
+    location.assign(next.pathname + next.search);
+  }
+  function showLoadingForm(root,view) {
+    root.replaceChildren();
+    const pending=document.createElement('p');
+    pending.className='clerk-form-loading';
+    pending.setAttribute('role','status');
+    pending.textContent=`Loading secure ${view==='signup'?'account creation':'sign-in'} form…`;
+    root.appendChild(pending);
+  }
+  function showMountWarning(root,view) {
+    // An SDK component should produce visible content shortly after mount.
+    // If its renderer silently fails, display a retry action instead of leaving
+    // an unexplained blank box. Do not collect passwords or bypass Clerk.
+    if(currentLoginView!==view || hasSession()) return;
+    const rendered=!!root.querySelector('input, [class*="cl-rootBox"], [class*="cl-card"], iframe');
+    if(rendered) return;
+    statusLine('Secure account form did not load. Check your connection and retry.');
+    if(!root.querySelector('.clerk-form-retry')) {
+      const retry=document.createElement('button');
+      retry.type='button';
+      retry.className='clerk-form-retry';
+      retry.textContent='Reload secure form';
+      retry.addEventListener('click',()=>location.reload());
+      root.appendChild(retry);
+    }
+  }
   async function setLoginView(requestedView) {
     if(!clerk || hasSession()) return;
-    const view = requestedView === 'signup' ? 'signup' : 'signin';
+    const view=requestedView==='signup'?'signup':'signin';
     const root=$('clerk-auth-root');
-    if(!root) return;
-    // Clicking the same tab must NOT restart the email/password/OTP flow.
-    if(currentLoginView === view) return;
-    const previousView=currentLoginView;
-    currentLoginView=view;
-    statusLine('');
+    if(!root) throw new Error('Authentication container is missing.');
+    if(currentLoginView) {
+      if(currentLoginView!==view) navigateLoginView(view);
+      return;
+    }
     showLoginHeading(view);
-    // Remove Clerk's previous hash route (e.g. #/factor-one) on mode change.
-    // Do not modify redirect_url or external OAuth return URL parameters.
-    const nextUrl=new URL(location.href);
-    nextUrl.searchParams.set('mode',view);
-    nextUrl.hash='';
-    history.replaceState(history.state,'',nextUrl.pathname + nextUrl.search);
-    try {
-      if(previousView==='signup') clerk.unmountSignUp(root);
-      else if(previousView==='signin') clerk.unmountSignIn(root);
-    } catch {} // A failed unmount must not leave the wrong form on screen.
-    root.replaceChildren();
+    showLoadingForm(root,view);
+    statusLine('');
     const props={
       routing:'hash',
       signInUrl:localAuthUrl('signin'),
       signUpUrl:localAuthUrl('signup'),
-      signInForceRedirectUrl:loginPageUrl,
-      signUpForceRedirectUrl:loginPageUrl,
+      signInForceRedirectUrl:home,
+      signUpForceRedirectUrl:home,
       appearance:loginAppearance
     };
     try {
       if(view==='signup') clerk.mountSignUp(root,props);
       else clerk.mountSignIn(root,props);
+      currentLoginView=view;
+      // A missing Clerk renderer must not silently appear as a successful form.
+      setTimeout(()=>showMountWarning(root,view),12000);
     } catch(error) {
       currentLoginView=null;
+      statusLine('Unable to display the secure authentication form.');
       throw error;
     }
   }
   async function initLoginPage() {
-    const signinTab=$('clerk-tab-login');
-    const signupTab=$('clerk-tab-signup');
-    signinTab?.addEventListener('click',()=>setLoginView('signin').catch(e=>statusLine(e.message)));
-    signupTab?.addEventListener('click',()=>setLoginView('signup').catch(e=>statusLine(e.message)));
-    // Clerk's internal "Sign up"/"Sign in" anchors should swap the in-page
-    // widget, never navigate to an external Account Portal or another layout.
+    $('clerk-tab-login')?.addEventListener('click',()=>navigateLoginView('signin'));
+    $('clerk-tab-signup')?.addEventListener('click',()=>navigateLoginView('signup'));
+    // Links inside Clerk's widget must also lead to the embedded MYRAA form.
     $('clerk-auth-root')?.addEventListener('click',(event)=>{
       if(event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
       const link=event.target.closest?.('a[href]');
-      if(!link || link.target && link.target !== '_self') return;
+      if(!link || (link.target && link.target!=='_self')) return;
       let target;
-      try { target=new URL(link.href, location.href); } catch { return; }
-      if(target.origin !== location.origin || target.pathname !== loginPageUrl) return;
+      try {target=new URL(link.href,location.href)} catch {return}
+      if(target.origin!==location.origin || target.pathname!==loginPageUrl) return;
       const mode=target.searchParams.get('mode');
       if(mode!=='signin' && mode!=='signup') return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      setLoginView(mode).catch(e=>statusLine(e.message));
+      navigateLoginView(mode);
     },true);
-    // There is NO universal "Forgot password?" button outside the form.
-    // Clerk shows its real password reset action ONLY at the password step,
-    // including email verification and safe password updating.
     await startClerk();
     clerk.addListener(()=>onClerkChanged().catch(e=>statusLine(e.message)));
-    if (hasSession()) await exchange();
+    if(hasSession()) await exchange();
     else await setLoginView(new URLSearchParams(location.search).get('mode'));
   }
   async function initAppPage() {

@@ -63,3 +63,8 @@ body[data-myraa-clerk=login]{margin:0;background:var(--clerk-bg);color:var(--cle
 /* Never show the Clerk loading placeholder behind an approved/pending state.
    Explicit display:grid rules otherwise override the browser's [hidden] style. */
 #clerk-auth-root[hidden], #clerk-approval[hidden], .clerk-tab[hidden] { display:none !important; }
+
+/* Authentication remains readable even if Clerk needs extra time to render. */
+.clerk-form-loading{color:#536e63;text-align:center;padding:25px 8px;line-height:1.5}
+.clerk-form-retry{display:block;margin:16px auto 2px;padding:11px 18px;border:1px solid #b8d8ca;border-radius:10px;background:#f2fbf6;color:#075c47;font-weight:700;cursor:pointer}
+.clerk-form-retry:focus-visible{outline:3px solid #6dbba1;outline-offset:3px}
