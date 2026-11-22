@@ -1,0 +1,11 @@
+MYRAA Railway Ready Source (without optional companion AI desktop files)
+
+This ZIP was repacked from the user-uploaded Full Source ZIP. It preserves the root project layout and contains railway.toml, Procfile, requirements.txt, backend, frontend, and tests. It does NOT contain Railway secrets, a live SQLite DB, or .git metadata.
+
+To repair incomplete Git repository deployment, extract into your VS Code repo ROOT where .git lives. Compare files before overwriting existing modifications. Verify railway.toml and Procfile now exist at root, plus backend/models.py and backend/business_models.py.
+
+Railway service Settings > Build: Railpack, Root Directory: /; Deploy > Custom Start Command: cd backend && uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080}.
+
+Preserve existing DATABASE_URL=sqlite:////data/inventory.db; persistent volume mounted /data; Clerk variables and keys unchanged. Do not copy or overwrite your production database or secrets.
+
+Commit: git status; git add .; git diff --cached --stat; git commit -m "Add missing MYRAA source and Railway start config"; git pull --rebase origin main; git push origin main. Stop if conflicts occur.
