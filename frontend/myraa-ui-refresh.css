@@ -123,3 +123,88 @@
 :root[data-theme="dark"] #view-challans .invoice-record-actions .invoice-delete-action:not(:disabled):hover { background:#573036; color:#ffced3; }
 #view-challans .invoice-record-actions .invoice-delete-action:disabled { opacity:.35; cursor:not-allowed; }
 .sr-only {position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important;}
+
+
+/* Invoice scan picker — matching the Excel chooser, with real image previews. */
+#view-challans .cs-legacy-import #invoice-scan-picker {
+  max-width:none; display:block; border:1px solid var(--line,#d6e5dc);
+  border-radius:16px; padding:16px 18px; background:var(--surface-muted,#f6faf7);
+  margin:14px 0 20px; min-width:0; color:var(--ink,#173b31);
+}
+#view-challans #invoice-scan-picker .invoice-scan-heading {
+  display:flex; gap:8px; align-items:center; margin-bottom:12px;
+  font-size:13px; font-weight:800; color:var(--ink,#173b31);
+}
+#view-challans #invoice-scan-picker .invoice-scan-heading i{color:#00875f;font-size:16px}
+#view-challans #invoice-scan-dropzone {
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  padding:18px; gap:9px; min-height:172px; border:2px dashed #7cbfa4; border-radius:15px;
+  text-align:center; background:#f2fcf6; color:#143e2e; cursor:pointer;
+  transition:background .15s, border-color .15s, box-shadow .15s;
+}
+#view-challans #invoice-scan-dropzone:hover,
+#view-challans #invoice-scan-dropzone.is-dragging,
+#view-challans #invoice-scan-dropzone:focus-within {
+  background:#e8f8ed; border-color:#008b63; box-shadow:0 0 0 3px #0a95651c;
+}
+#view-challans #invoice-scan-dropzone .invoice-scan-symbol{
+  width:47px;height:47px;display:grid;place-items:center;border-radius:14px;
+  background:#d7f3e5;color:#007b57;font-size:22px;
+}
+#view-challans #invoice-scan-dropzone strong{font-size:14px;font-weight:850}
+#view-challans #invoice-scan-dropzone small{color:#668779;font-size:12px;font-weight:500}
+#view-challans #invoice-scan-dropzone .invoice-scan-browse{
+  display:inline-flex;gap:8px;align-items:center;justify-content:center;
+  min-height:39px; background:#00845d; color:#fff; border-radius:10px;
+  padding:9px 16px;font-size:12px;font-weight:800;
+}
+#view-challans #invoice-scan-picker input.invoice-scan-native{
+  position:absolute!important;width:1px!important;height:1px!important;min-height:0!important;
+  padding:0!important;margin:0!important;border:0!important;opacity:0!important;
+  pointer-events:none!important;
+}
+#view-challans #invoice-scan-picker .invoice-scan-summary{
+  font-size:12px;line-height:1.5;color:var(--ink-soft,#648075);padding:11px 1px 0;
+}
+#view-challans #invoice-scan-picker .invoice-scan-summary.is-error{color:#ca3c48;font-weight:750}
+#view-challans #invoice-scan-previews{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:12px;margin-top:10px;
+}
+#view-challans #invoice-scan-previews:empty{display:none}
+#view-challans .invoice-scan-preview{
+  min-width:0; margin:0;position:relative;background:var(--panel,#fff);
+  border:1px solid var(--line,#d2e5d9);border-radius:13px;overflow:hidden;
+  box-shadow:0 4px 16px #133b2810;
+}
+#view-challans .invoice-scan-thumbnail{width:100%;height:106px;object-fit:cover;display:block;background:#ecf5ef}
+#view-challans .invoice-scan-pdf{display:flex;align-items:center;justify-content:center;gap:8px;
+  width:100%;height:106px;background:#fbeeee;color:#bb3d49;font-size:34px}
+#view-challans .invoice-scan-preview figcaption{display:flex;flex-direction:column;gap:3px;
+  padding:9px 10px;overflow:hidden}
+#view-challans .invoice-scan-preview .invoice-scan-name{font-size:11px;font-weight:750;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;color:var(--ink,#173b31)}
+#view-challans .invoice-scan-preview .invoice-scan-size{font-size:10px;color:var(--ink-soft,#6c8578)}
+#view-challans .invoice-scan-remove{
+  position:absolute;right:6px;top:6px;z-index:2;width:28px;height:28px;display:grid;place-items:center;
+  padding:0;border-radius:9px;border:1px solid #e2d4d6;background:#fff;color:#a72e3a;
+  cursor:pointer;box-shadow:0 2px 9px #2223;
+}
+#view-challans .invoice-scan-remove:hover{background:#ffeaed}
+#view-challans .invoice-scan-remove:focus-visible,
+#view-challans #invoice-scan-dropzone:focus-visible{outline:3px solid #32c89a;outline-offset:2px}
+:root[data-theme="dark"] #view-challans #invoice-scan-picker{background:#153e34;border-color:#356854}
+:root[data-theme="dark"] #view-challans #invoice-scan-dropzone{background:#15382e;color:#e6fff2;border-color:#4a9a77}
+:root[data-theme="dark"] #view-challans #invoice-scan-dropzone:hover,
+:root[data-theme="dark"] #view-challans #invoice-scan-dropzone.is-dragging{background:#20483a;border-color:#7adde0}
+:root[data-theme="dark"] #view-challans #invoice-scan-dropzone small{color:#b2d6c4}
+:root[data-theme="dark"] #view-challans .invoice-scan-preview{background:#12352e;border-color:#356852}
+:root[data-theme="dark"] #view-challans .invoice-scan-thumbnail{background:#26473b}
+:root[data-theme="dark"] #view-challans .invoice-scan-pdf{background:#51383d;color:#ffd4da}
+:root[data-theme="dark"] #view-challans .invoice-scan-remove{background:#2c3433;border-color:#8a6165;color:#ffe0e3}
+:root[data-theme="dark"] #view-challans #invoice-scan-picker .invoice-scan-summary.is-error{color:#ffb3bd}
+@media(max-width:520px){#view-challans #invoice-scan-picker{padding:12px}#view-challans #invoice-scan-previews{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}}
+
+:root[data-theme="dark"] #view-challans #invoice-scan-picker .invoice-scan-heading,
+:root[data-theme="dark"] #view-challans .invoice-scan-preview .invoice-scan-name{color:#effcf4}
+:root[data-theme="dark"] #view-challans #invoice-scan-picker .invoice-scan-summary,
+:root[data-theme="dark"] #view-challans .invoice-scan-preview .invoice-scan-size{color:#bddbc9}
