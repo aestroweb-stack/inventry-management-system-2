@@ -27,7 +27,7 @@ class LegacyLoginFlashRegression(unittest.TestCase):
     def test_bust_old_dashboard_script_cache(self):
         html = (ROOT / 'index.html').read_text(encoding='utf-8')
         self.assertIn('app.js?v=myraa-no-legacy-gate-1', html)
-        self.assertIn('clerk-auth.js?v=myraa-no-legacy-gate-1', html)
+        self.assertIn('clerk-auth.js?v=myraa-401-gate-1', html)
 
 
 if __name__ == '__main__':

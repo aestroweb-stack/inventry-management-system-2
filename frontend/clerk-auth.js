@@ -33,7 +33,7 @@
     if (!resp.configured || !resp.publishableKey) throw new Error('Clerk is not configured in Railway Variables.');
     return resp.publishableKey;
   };
-  let clerk, busy=false, account=null;
+  let clerk, account=null, exchangeInFlight=null;
   const publicRoot = () => String(location.origin);
   const fetchStatus=()=>request('/api/workspace-auth/status');
   async function startClerk() {
@@ -57,9 +57,11 @@
     try { await request('/api/clerk/logout','POST'); } catch {} // Only clears browser cookies.
   }
   async function exchange() {
-    if(busy || !hasSession()) return;
-    busy=true;
-    try {
+    if (!hasSession()) throw new Error('Clerk session not available. Sign in again.');
+    // All simultaneous callers await the SAME exchange. A boolean `busy`
+    // previously returned early, so API retries could run before cookies set.
+    if (exchangeInFlight) return exchangeInFlight;
+    exchangeInFlight = (async () => {
       // Clerk tokens are short lived. On 401, request one fresh token from
       // Clerk and retry exactly once. Never skip backend JWT verification.
       const submit = async (forceRefresh) => {
@@ -78,12 +80,19 @@
       account=payload.approved ? payload.user : null;
       if(payload.approved) {
         if(loginPage) location.replace(home);
-        else refreshAppProfile(account);
+        else {
+          refreshAppProfile(account);
+          // Release queued dashboard requests only after the backend has
+          // set BOTH the signed session and Clerk-bound HttpOnly cookies.
+          window.myraaAuthGate?.ready();
+        }
       } else {
         await removeBackendSession();
         throw new Error('Clerk-verified account could not access workspace');
       }
-    } finally { busy=false; }
+    })();
+    try { return await exchangeInFlight; }
+    finally { exchangeInFlight = null; }
   }
   function refreshAppProfile(user) {
     if (!user) return;
@@ -95,6 +104,7 @@
     // The full account label lives inside the profile menu, not in the cramped brand breadcrumb.
   }
   async function signOut() {
+    window.myraaAuthGate?.fail(new Error('Signed out of MYRAA'));
     await removeBackendSession();
     if(clerk) await clerk.signOut();
     for(const key of ['inventoryAssistantHistory.v1','inventoryAssistantSessions.v1','inventoryAssistantSessionId.v1'])
@@ -261,13 +271,30 @@
   async function initAppPage() {
     // No unverified cookie can authenticate the backend. Clerk auth must exist.
     await startClerk();
-    if(!hasSession()){await removeBackendSession(); location.replace(loginPageUrl);return;}
-    // Always bind the MYRAA session to the CURRENT Clerk identity. An old
-    // approved account cookie must never survive switching Clerk accounts.
+    if(!hasSession()){
+      window.myraaAuthGate?.fail(new Error('No active Clerk session'));
+      await removeBackendSession();
+      location.replace(loginPageUrl);
+      return;
+    }
+    window.myraaAuthGate?.setRefresh(async () => {
+      if(!hasSession()) throw new Error('Clerk session ended');
+      return exchange();
+    });
+    // Bind the backend session to the CURRENT Clerk identity BEFORE unblocking
+    // any stock, costing or analytics requests from earlier scripts.
     await exchange();
-    // When backend cookie expires, refresh only while Clerk remains signed in.
-    setInterval(()=>{if(hasSession()) exchange().catch(()=>{});}, 7 * 60 * 1000);
+    const proactivelyRefresh = () => {
+      if (!hasSession() || document.visibilityState === 'hidden') return;
+      window.myraaAuthGate?.refresh().catch(() => {});
+    };
+    // Renew ahead of the backend cookie's 15-minute expiry, and when the
+    // browser/tab resumes from sleep. Private API requests await refresh.
+    setInterval(proactivelyRefresh, 7 * 60 * 1000);
+    document.addEventListener('visibilitychange', proactivelyRefresh);
+    window.addEventListener('focus', proactivelyRefresh);
     clerk.addListener(({user,session})=>{if(user === null && session === null){
+      window.myraaAuthGate?.fail(new Error('Clerk session ended'));
       removeBackendSession().finally(()=>location.replace(loginPageUrl));
     }});
     installProfileAndTeam();
@@ -316,8 +343,7 @@
   startup().catch(error=>{
     statusLine(error.message||'Secure login unavailable');
     if(!loginPage) {
-      // Never resurrect the removed legacy login overlay. Fail closed and
-      // return to the branded, in-page Clerk sign-in UI on auth errors.
+      window.myraaAuthGate?.fail(error);
       location.replace(localAuthUrl('signin'));
     } else {
       const root=$('clerk-auth-root');
