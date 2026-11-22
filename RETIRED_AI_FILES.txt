@@ -1,0 +1,12 @@
+# These old AI/MCP-only files were removed from the upgraded source.
+backend/inventory_mcp.py
+backend/services/cloud_assistant_service.py
+backend/services/claude_photo_service.py
+backend/services/ai_inventory_service.py
+tools/check_myraa_mcp.py
+tools/test_myraa_mcp_write_e2e.py
+tests/test_gemini_tool_routing.py
+tests/test_myraa_mcp_crud_integration.py
+tests/test_force_first.py
+tests/test_myraa_production.py
+tests/test_core_flow.py

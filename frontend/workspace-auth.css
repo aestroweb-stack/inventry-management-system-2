@@ -1,0 +1,2 @@
+/* Shared profile components: inserted after existing dark/light global tokens. */
+.workspace-auth-form label{min-width:0}.workspace-auth-form .hint{font-size:12px}.workspace-profile-photo-row img{object-fit:cover;background:#e1f4e9}.workspace-profile-actions p{font-size:12px;overflow-wrap:anywhere}.workspace-user-note{color:var(--ink-soft,#537e70);font-size:11px;font-weight:700;white-space:nowrap}
