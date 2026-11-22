@@ -19,7 +19,12 @@ from services import visual_match_service
 MODEL_NAME = visual_match_service.MODEL_VERSION
 VECTOR_DIMENSIONS = visual_match_service.VECTOR_DIMENSIONS
 TABLE_NAME = "product_visual_embeddings_siglip2_v1"
-DEV_MAX_CATALOG = int(os.getenv("VISUAL_SEARCH_DEV_MAX_CATALOG", "500"))
+# SQLite fallback is linear-time; higher limits are configurable but require
+# benchmarking on the chosen instance. pgvector remains recommended at scale.
+try:
+    DEV_MAX_CATALOG = max(100, min(3000, int(os.getenv("VISUAL_SEARCH_DEV_MAX_CATALOG", "1200"))))
+except ValueError:
+    DEV_MAX_CATALOG = 1200
 RATE_LIMIT_PER_MINUTE = int(os.getenv("VISUAL_SEARCH_RPM", "30"))
 CACHE_TTL_SECONDS = int(os.getenv("VISUAL_SEARCH_CACHE_SECONDS", "60"))
 REFERENCE_SHORTLIST_SIZE = max(25, int(os.getenv("VISUAL_SEARCH_REFERENCE_SHORTLIST", "100")))
@@ -319,6 +324,10 @@ def _development_search(db, embedding: tuple[float, ...], image_dir: Path, limit
                     ref_content = candidate.read_bytes()
                     ref_embedding = _image_embedding(ref_content) if _semantic_local_mode() else visual_match_service.local_visual_embedding(ref_content)
                     with _local_embedding_lock:
+                        # Bound the in-memory reference cache to avoid runaway
+                        # memory usage on long-running Railway services.
+                        if len(_local_embeddings) >= DEV_MAX_CATALOG * 3:
+                            _local_embeddings.clear()
                         _local_embeddings[image.id] = (signature, ref_embedding)
                 else:
                     ref_embedding = cached[1]

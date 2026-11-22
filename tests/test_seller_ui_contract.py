@@ -42,7 +42,9 @@ class SellerUIContract(unittest.TestCase):
         self.assertIn('Hacker Room',(FRONT/'index.html').read_text())
         self.assertIn('8630404031',(FRONT/'index.html').read_text())
         sound=(FRONT/'seller-sounds.js').read_text()
-        self.assertIn("localStorage.getItem(key)==='1'",sound)
-        self.assertIn('SpeechSynthesisUtterance',sound)
+        self.assertIn("localStorage.getItem(KEY) === '1'",sound)
+        self.assertIn('navigator.vibrate',sound)
+        self.assertNotIn("document.addEventListener('click'", sound)
+        self.assertIn('click() { /* compatibility: intentionally silent */ }',sound)
 
 if __name__ == '__main__':unittest.main()

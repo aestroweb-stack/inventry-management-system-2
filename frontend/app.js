@@ -56,7 +56,18 @@ window.fetch = (input, init) => {
   if (!isAppApi) return nativeFetch(input, init);
   appApiRequests += 1;
   if (appApiRequests === 1) appLoadingTimer = setTimeout(() => appLoadingIndicator?.classList.add("is-visible"), 320);
-  return nativeFetch(input, init).finally(() => {
+  return nativeFetch(input, init).then((response) => {
+    // Signal only successfully completed stock/catalog/invoice mutations.
+    // In particular exclude Clerk login, image matching (a read-only POST),
+    // exports, scanning, lookups and navigation from auditory feedback.
+    const url = new URL(typeof input === "string" ? input : input.url, window.location.href);
+    const method = String(init?.method || (typeof input !== "string" ? input.method : "GET") || "GET").toUpperCase();
+    const isCrud = /^(POST|PUT|PATCH|DELETE)$/.test(method)
+      && /^\/api\/(?:products|variants|inventory|orders|purchase-challans|challans|bulk|reorder|alerts|costing)\b/.test(url.pathname)
+      && !/\/(?:visual-match|search|preview|match|lookup|export|status|download|scan)(?:\/|$)/.test(url.pathname);
+    if (response.ok && isCrud) window.myraaSound?.success?.();
+    return response;
+  }).finally(() => {
     appApiRequests = Math.max(0, appApiRequests - 1);
     if (!appApiRequests) {
       clearTimeout(appLoadingTimer);
@@ -176,6 +187,7 @@ let lastAlertCount = null;
 function noteAlertCount(n) {
   if (lastAlertCount !== null && n > lastAlertCount) {
     showToast("New inventory alert — check Alerts", "alert", 2200);
+    window.myraaSound?.alert?.();
   }
   lastAlertCount = n;
   setAlertBadge(n);
@@ -186,14 +198,6 @@ let assistantPhotoZoom = 1;
 function setAlertBadge(n) {
   [$("alert-count"), $("alert-count-mobile")].forEach((el) => { if (el) { el.textContent = n; el.hidden = !(n > 0); } });
 }
-
-// Unlock/resume audio after the first real user interaction on mobile browsers.
-document.addEventListener("pointerdown", () => {
-  try {
-    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-    if (audioCtx.state === "suspended") audioCtx.resume();
-  } catch (e) {}
-}, { once: false, passive: true });
 
 // ---------------- Confirm modal ----------------
 let confirmAction = null;
@@ -219,9 +223,12 @@ $("sidebar-collapse").addEventListener("click", () => {
   const collapsed = $("shell").classList.toggle("sidebar-collapsed");
   localStorage.setItem("sidebarCollapsed", String(collapsed));
   $("sidebar-collapse").setAttribute("aria-label", collapsed ? "Expand sidebar" : "Collapse sidebar");
+  $("sidebar-collapse").setAttribute("aria-expanded", String(!collapsed));
   $("sidebar-collapse").title = collapsed ? "Expand sidebar" : "Collapse sidebar";
 });
 if (localStorage.getItem("sidebarCollapsed") === "true") $("shell").classList.add("sidebar-collapsed");
+$("sidebar-collapse").setAttribute("aria-expanded", String(!$('shell').classList.contains('sidebar-collapsed')));
+$("sidebar-collapse").setAttribute("aria-label", $('shell').classList.contains('sidebar-collapsed') ? 'Expand sidebar' : 'Collapse sidebar');
 $("nav-backdrop").addEventListener("click", closeDrawer);
 document.addEventListener("keydown", (event) => { if (event.key === "Escape" && $("sidebar").classList.contains("is-open")) closeDrawer(); });
 $("topbar-alerts").addEventListener("click", () => switchView("alerts"));
@@ -256,7 +263,7 @@ function switchView(name, { updateUrl = true } = {}) {
   if (name === "orders") loadOrderHistory();
   if (name === "reorder") loadReorderList();
   if (name === "alerts") loadAlerts();
-  if (name === "trash") loadTrash();
+  if (name === "trash") { loadTrash(); loadRecoveryPoints(); }
   if (name === "visual") loadVisualSearchStatus();
   if (name === "history") { history.offset = 0; loadHistory(true); }
 }
@@ -998,7 +1005,6 @@ $("bulk-product-submit").addEventListener("click", async () => {
     $("bulk-product-file-title").textContent = "Import finished — choose another file";
     $("bulk-product-file-meta").textContent = "Select a new workbook to start the next import";
     if (data.variants_created || data.variants_merged) {
-      playSuccessSound();
       showToast(`${data.products_created} new products; ${data.variants_created} sizes added and ${data.variants_merged || 0} grouped`, "success", 2600);
       $("product-search").value = "";
       window.__keepProductSearch = true;
@@ -1262,7 +1268,6 @@ async function lookupVariant(variantCode) {
     box.hidden = true;
     msg.textContent = `"${variantCode}" not found — check the SKU and size, or add it from Products first.`;
     msg.className = "msg error";
-    window.myraaSound?.error?.();
   }
 }
 
@@ -1284,7 +1289,6 @@ async function lookupProduct(sku) {
     box.hidden = true;
     msg.textContent = `Product code “${sku}” not found. Check that the design is active.`;
     msg.className = "msg error";
-    window.myraaSound?.error?.();
   }
 }
 
@@ -1296,7 +1300,6 @@ function renderScanProduct(product, onlyVariantCode = null) {
   box.innerHTML = `<div class="scan-result-head"><div><h2>${esc(product.name)}</h2><span class="sku-tag">${esc(product.sku)}</span></div><span class="hint">${onlyVariantCode ? "Size barcode · one size" : "Product QR/barcode · all sizes"}</span></div>${scanStockCard({ ...product, variants }, null, false)}`;
   attachScanStockForms(box);
   box.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  window.myraaSound?.success?.('Scan successful. '+product.name+' found.');
 }
 
 // ================================================================ //
@@ -1305,40 +1308,37 @@ function renderScanProduct(product, onlyVariantCode = null) {
 let visualCameraStream = null;
 let visualSelectedFile = null;
 let visualPreviewUrl = null;
+let visualRequestController = null;
+let visualRequestNumber = 0;
 
 async function loadVisualSearchStatus() {
   const el = $("visual-runtime-status");
+  const empty = $("visual-onboarding");
   if (!el) return;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    el.textContent = attempt ? "Photo search API is starting; retrying…" : "Checking photo search setup…";
-    el.className = "visual-runtime-status";
-    try {
-      const status = await getJSON(`${API}/visual-search/status`);
-      el.textContent = status.message;
-      const ready = status.index_ready === true && status.status === "ready";
-      el.classList.toggle("is-ready", ready);
-      el.classList.toggle("is-warning", !ready);
-      el.title = [
-        `Database: ${status.database}${status.database_url_configured ? " (DATABASE_URL configured)" : " (SQLite fallback; DATABASE_URL missing)"}`,
-        `PostgreSQL connected: ${status.postgres_connected ? "yes" : "no"}`,
-        `pgvector extension: ${status.pgvector_extension_installed ? "installed" : "missing"}`,
-        status.database === "postgresql"
-          ? `Photo index: ${status.indexed_photos} / ${status.catalog_photos}${status.index_ready ? " (ready)" : " (not ready)"}`
-          : `Local photo matcher: ${status.index_ready ? `ready; ${status.catalog_photos} reference photos` : "no usable photos or development catalog limit exceeded"}`,
-        `Model runtime: ${status.runtime_installed ? "installed" : "missing"}; weights loaded: ${status.model_weights_loaded ? "yes" : "no"}`,
-        `Private model service: ${status.external_model_service_configured ? "configured" : "not configured"}`,
-      ].join("\n");
-      return;
-    } catch (error) {
-      if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 700 * (attempt + 1)));
-      else {
-        const detail = String(error?.message || "");
-        el.textContent = detail.includes("502")
-          ? "Photo search API is returning 502. The service may be restarting; check Railway deploy/runtime logs and retry."
-          : "Photo search setup could not be reached after 3 attempts. Check the Railway app service, then retry.";
-        el.classList.add("is-warning");
-      }
+  el.textContent = "Checking saved product photos…";
+  el.className = "visual-runtime-status";
+  try {
+    const status = await getJSON(`${API}/visual-search/status`);
+    const count = Number(status.catalog_photos || 0);
+    const ready = status.index_ready === true && status.status === "ready";
+    if (empty) empty.hidden = count > 0;
+    if (count === 0) {
+      el.textContent = "No product photos yet. Add catalog photos to start finding products by image.";
+    } else if (ready && status.semantic_matching_available) {
+      el.textContent = `${count} catalog photos available · photo matching ready`;
+    } else if (ready) {
+      el.textContent = `${count} catalog photos available · similar-looking suggestions (review matches before opening)`;
+    } else {
+      el.textContent = `${count} catalog photos saved · photo search needs attention. Try again or contact support.`;
     }
+    el.classList.toggle("is-ready", ready);
+    el.classList.toggle("is-warning", !ready);
+    // Do not expose database engine names, infrastructure limitations, model
+    // URLs or internal indexing diagnostics in the seller interface.
+    el.removeAttribute("title");
+  } catch (_) {
+    el.textContent = "Product photo status is temporarily unavailable. Please try again.";
+    el.classList.add("is-warning");
   }
 }
 
@@ -1365,6 +1365,7 @@ function chooseVisualFile(file) {
     setVisualMessage("Choose a clear JPG, PNG, or WEBP photo (maximum 10 MB).", "error");
     return;
   }
+  if (visualRequestController) visualRequestController.abort();
   visualSelectedFile = file;
   if (visualPreviewUrl) URL.revokeObjectURL(visualPreviewUrl);
   visualPreviewUrl = URL.createObjectURL(file);
@@ -1405,10 +1406,16 @@ function captureVisualPhoto() {
 async function matchVisualProduct() {
   if (!visualSelectedFile) return;
   const results = $("visual-results");
-  setVisualMessage("Comparing with saved product photos…");
+  const sequence = ++visualRequestNumber;
+  if (visualRequestController) visualRequestController.abort();
+  visualRequestController = new AbortController();
+  const controller = visualRequestController;
+  const timeout = setTimeout(() => controller.abort(), 25000);
+  setVisualMessage("Finding possible matches…");
   try {
     const data = new FormData(); data.append("file", visualSelectedFile);
-    const response = await fetch(`${API}/products/visual-match?limit=5`, { method: "POST", body: data });
+    const response = await fetch(`${API}/products/visual-match?limit=5`, { method: "POST", body: data, signal: controller.signal });
+    if (sequence !== visualRequestNumber) return;
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
       const details = typeof payload.detail === "string" ? payload.detail : "";
@@ -1443,9 +1450,14 @@ async function matchVisualProduct() {
     }));
     setVisualMessage(payload.message || (ambiguous ? "Review the candidates before opening sizes." : "Review the match before updating stock."), ambiguous ? "error" : "success");
   } catch (error) {
+    if (sequence !== visualRequestNumber) return;
     results.hidden = true;
-    loadVisualSearchStatus();
-    setVisualMessage(error.message || "Photo search failed. Try another clear photo.", "error");
+    setVisualMessage(error.name === "AbortError"
+      ? "Search took too long. Try a smaller clear image or retry."
+      : (error.message || "Photo search failed. Try another clear photo."), "error");
+  } finally {
+    clearTimeout(timeout);
+    if (sequence === visualRequestNumber) visualRequestController = null;
   }
 }
 
@@ -1453,6 +1465,8 @@ $("visual-camera-toggle")?.addEventListener("click", toggleVisualCamera);
 $("visual-capture")?.addEventListener("click", captureVisualPhoto);
 $("visual-upload")?.addEventListener("change", (event) => chooseVisualFile(event.target.files?.[0]));
 $("visual-clear")?.addEventListener("click", () => {
+  visualRequestNumber++;
+  visualRequestController?.abort();
   visualSelectedFile = null;
   if (visualPreviewUrl) URL.revokeObjectURL(visualPreviewUrl);
   visualPreviewUrl = null;
@@ -2116,7 +2130,7 @@ async function loadTrash() {
         </div>
         <div class="tcard-actions">
           <button class="btn-secondary trash-restore" type="button"><i class="fa-solid fa-rotate-left"></i><span>Restore</span></button>
-          <button class="btn-danger trash-wipe" type="button"><i class="fa-solid fa-trash-can"></i><span>Delete forever</span></button>
+          <span class="trash-protected"><i class="fa-solid fa-lock" aria-hidden="true"></i> History protected</span>
         </div>
       </article>`).join("");
     grid.querySelectorAll(".trash-restore").forEach((btn) => btn.addEventListener("click", async () => {
@@ -2124,16 +2138,76 @@ async function loadTrash() {
       try { await apiPost(`${API}/products/${encodeURIComponent(sku)}/restore`); showToast(`${sku} restored successfully`, "success"); if (trashPage.offset && items.length === 1) trashPage.offset = Math.max(0, trashPage.offset - trashPage.limit); loadTrash(); loadSummary(); }
       catch (err) { showToast("Restore failed: " + err.message, "error", 2200); }
     }));
-    grid.querySelectorAll(".trash-wipe").forEach((btn) => btn.addEventListener("click", () => {
-      const sku = btn.closest(".tcard").dataset.sku;
-      askConfirm("Delete forever?", `${sku} and its full history will be permanently removed. This cannot be undone.`, async () => {
-        try { await apiDelete(`${API}/trash/${encodeURIComponent(sku)}`); showToast(`${sku} permanently deleted`, "success"); if (trashPage.offset && items.length === 1) trashPage.offset = Math.max(0, trashPage.offset - trashPage.limit); loadTrash(); }
-        catch (err) { showToast("Delete failed: " + err.message, "error", 2200); }
-      }, "Delete Forever");
-    }));
+
   } catch (e) { grid.innerHTML = `<p class="hint">Could not load Trash.</p>`; }
 }
 
+
+// Seller-owned Recovery Center. All reads/writes use the same authenticated
+// session and tenant-scope enforced by the existing FastAPI middleware.
+function formatRecoveryBytes(bytes) {
+  const count = Math.max(0, Number(bytes) || 0);
+  return count >= 1048576 ? `${(count / 1048576).toFixed(1)} MB` : `${Math.ceil(count / 1024)} KB`;
+}
+async function loadRecoveryPoints() {
+  const list = $("recovery-list");
+  const status = $("recovery-status");
+  if (!list || !status) return;
+  status.textContent = "Loading private recovery points…";
+  try {
+    const payload = await getJSON(`${API}/recovery/snapshots`);
+    const items = Array.isArray(payload.items) ? payload.items : [];
+    status.textContent = items.length ? `${items.length} latest recovery point(s) available for download.` : "No recovery points yet. Create one now; future deletions also create one automatically.";
+    list.replaceChildren();
+    for (const item of items) {
+      const row = document.createElement("div");
+      row.className = "recovery-row";
+      const details = document.createElement("div");
+      details.className = "recovery-details";
+      const title = document.createElement("strong");
+      title.textContent = item.reason || "Recovery point";
+      const sub = document.createElement("small");
+      const stamp = String(item.created_at || "").replace(/^(\d{8})T(\d{6})Z$/, "$1 $2 UTC");
+      sub.textContent = `${stamp} · ${formatRecoveryBytes(item.size_bytes)} database · ${Number(item.media_files || 0)} media files`;
+      details.append(title, sub);
+      const actions = document.createElement("div");
+      actions.className = "recovery-actions";
+      const preview = document.createElement("button");
+      preview.type = "button";
+      preview.className = "btn-secondary";
+      preview.textContent = "View contents";
+      const link = document.createElement("a");
+      link.className = "btn-secondary";
+      link.textContent = "Download backup";
+      link.href = `${API}/recovery/snapshots/${encodeURIComponent(item.name)}/archive`;
+      link.download = String(item.name).replace(/\.sqlite3$/, '-backup.zip');
+      preview.addEventListener("click", async () => {
+        preview.disabled = true;
+        try {
+          const counts = await getJSON(`${API}/recovery/snapshots/${encodeURIComponent(item.name)}/summary`);
+          sub.textContent = `${counts.products} products, ${counts.deleted_products} in Trash, ${counts.variants} sizes` +
+            (counts.supplier_invoices !== null ? `, ${counts.supplier_invoices} invoices` : "");
+        } catch (_) { sub.textContent = "Could not read snapshot summary."; }
+        finally { preview.disabled = false; }
+      });
+      actions.append(preview, link);
+      row.append(details, actions);
+      list.append(row);
+    }
+  } catch (_) {
+    status.textContent = "Unable to load private recovery points. Check your Railway volume and retry.";
+  }
+}
+$("recovery-create")?.addEventListener("click", async () => {
+  const button = $("recovery-create");
+  button.disabled = true;
+  try {
+    await apiPost(`${API}/recovery/snapshots`);
+    showToast("Recovery point safely created");
+    await loadRecoveryPoints();
+  } catch (error) { showToast(error.message || "Backup failed", "error", 2800); }
+  finally { button.disabled = false; }
+});
 
 // ---------------- Init ----------------
 const initialView = viewFromLocation();

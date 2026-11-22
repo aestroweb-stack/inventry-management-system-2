@@ -18,6 +18,7 @@
 <link rel="stylesheet" href="workspace-auth.css?v=5">
 <link rel="stylesheet" href="clerk-auth.css?v=1">
 <link rel="stylesheet" href="myraa-ui-refresh.css?v=4">
+<link rel="stylesheet" href="myraa-accessible-v2.css?v=2">
 </head>
 <body>
 
@@ -38,7 +39,7 @@
     <div class="rail-identity">
       <span class="rail-identity-mark" aria-hidden="true"><img src="assets/myraa-mark.svg" alt="" width="48" height="48"></span>
       <span class="rail-identity-name"><strong>MYRAA</strong><small>INVENTORY MANAGEMENT</small></span>
-      <button id="sidebar-collapse" class="icon-btn rail-collapse" type="button" aria-label="Collapse sidebar" title="Collapse sidebar"><i class="fa-solid fa-chevron-left"></i></button>
+      <button id="sidebar-collapse" class="icon-btn rail-collapse" type="button" aria-label="Collapse sidebar" aria-expanded="true" title="Collapse sidebar"><span class="rail-chevron" aria-hidden="true">‹</span></button>
     </div>
     <nav class="rail-nav">
       <button data-view="dashboard" class="rail-link is-active"><i class="fa-solid fa-chart-line"></i><span class="rail-label">Dashboard</span></button>
@@ -194,9 +195,10 @@
 
     <!-- ============== VISUAL PRODUCT SEARCH ============== -->
     <section id="view-visual" class="view">
-      <header class="view-head"><div><h1>Visual Product Search</h1><p class="sub">Find a catalog design from a photo. Review the image match and live size-wise stock before opening the product.</p></div></header>
+      <header class="view-head visual-page-head"><div><span class="visual-eyebrow"><i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i> PRODUCT DISCOVERY</span><h1>Find products by photo</h1><p class="sub">Capture or upload a garment photo to find a similar catalog design. Verify the product and live sizes before changing stock.</p></div></header>
       <section class="panel visual-scanner-panel" aria-labelledby="visual-scan-title">
         <div class="visual-scan-head"><div><h2 id="visual-scan-title"><i class="fa-solid fa-camera"></i> Search by product photo</h2><p class="hint">Take a clear photo or upload one. The app matches it with saved catalog photos and shows current stock from the database.</p></div><span class="visual-safe-note">Photo search does not change stock</span></div>
+        <div class="visual-steps" aria-label="How photo search works"><span><b>1</b> Choose photo</span><i class="fa-solid fa-arrow-right" aria-hidden="true"></i><span><b>2</b> Review matches</span><i class="fa-solid fa-arrow-right" aria-hidden="true"></i><span><b>3</b> Open live stock</span></div>
         <div class="visual-scan-controls">
           <button id="visual-camera-toggle" type="button" class="btn-secondary"><i class="fa-solid fa-camera"></i> Open camera</button>
           <button id="visual-capture" type="button" class="btn-primary" disabled><i class="fa-solid fa-camera-retro"></i> Take photo</button>
@@ -204,7 +206,8 @@
         </div>
         <div id="visual-camera-wrap" class="visual-camera-wrap" hidden><video id="visual-camera" playsinline muted></video></div>
         <div id="visual-preview-wrap" class="visual-preview-wrap" hidden><img id="visual-preview" alt="Selected product search photo"><button id="visual-clear" type="button" class="btn-ghost">Choose another photo</button></div>
-        <div id="visual-runtime-status" class="visual-runtime-status" role="status" aria-live="polite">Checking photo search setup…</div>
+        <div id="visual-onboarding" class="visual-onboarding" hidden><i class="fa-solid fa-images" aria-hidden="true"></i><div><strong>Start by adding catalog product photos</strong><p>Photos attached to your products make photo search possible. At least one clear front-facing image per design is recommended.</p></div><button type="button" class="btn-primary" data-myraa-nav="products"><i class="fa-solid fa-plus" aria-hidden="true"></i> Add product photos</button></div>
+        <div id="visual-runtime-status" class="visual-runtime-status" role="status" aria-live="polite">Checking saved product photos…</div>
         <div id="visual-scan-msg" class="msg" role="status"></div>
         <div id="visual-results" class="visual-results" hidden></div>
       </section>
@@ -404,10 +407,16 @@
 
     <!-- ================= TRASH ================= -->
     <section id="view-trash" class="view">
-      <header class="view-head"><div><h1>Trash</h1><p class="sub">Deleted designs stay here until restored or removed for good.</p></div></header>
+      <header class="view-head"><div><h1>Trash &amp; Recovery</h1><p class="sub">Restore deleted products and download private recovery points for historical inventory data.</p></div></header>
       <div id="trash-list" class="card-grid"></div>
       <p id="trash-empty" class="hint center" hidden>Trash is empty.</p>
       <div class="pager"><button id="trash-prev" class="btn-secondary pager-btn" type="button">← Previous</button><span id="trash-page-info"></span><button id="trash-next" class="btn-secondary pager-btn" type="button">Next →</button></div>
+      <section class="panel recovery-panel" aria-labelledby="recovery-title">
+        <div class="recovery-head"><div><h2 id="recovery-title"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> Seller Data Recovery</h2><p class="hint">MYRAA saves a private, consistent database recovery point before deletions. You can review and download your own backups below.</p></div><button id="recovery-create" type="button" class="btn-primary"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Create recovery point</button></div>
+        <p class="recovery-notice"><i class="fa-solid fa-circle-info" aria-hidden="true"></i> Products can be restored directly above. Other historical records can be downloaded for assisted recovery; replacing a live database is not automatic. Save copies off-server too.</p>
+        <div id="recovery-status" class="hint" aria-live="polite"></div>
+        <div id="recovery-list" class="recovery-list" aria-live="polite"></div>
+      </section>
     </section>
 
   </main>

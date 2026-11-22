@@ -17,6 +17,7 @@ from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Que
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import StreamingResponse, RedirectResponse, Response, JSONResponse
+from starlette.background import BackgroundTask
 from sqlalchemy import case, func, or_, delete as sa_delete, inspect as sa_inspect, text
 from sqlalchemy.orm import Session, joinedload, selectinload, contains_eager, aliased
 
@@ -31,7 +32,7 @@ from business_api import router as business_router, upsert_product_cost, upsert_
 from services import (
     inventory_service, alert_service, excel_service, reorder_service,
     barcode_service, bulk_stock_service, bulk_product_service,
-    visual_match_service, visual_search_service,
+    visual_match_service, visual_search_service, recovery_service,
 )
 from services import app_auth
 from services import packing_picklist_service
@@ -139,6 +140,15 @@ async def authenticated_seller_workspace(request: Request, call_next):
         return await call_next(request)
     # Set context before entering any downstream FastAPI route/dependency.
     with tenant_scope(account.id):
+        # A consistent on-volume snapshot is captured BEFORE destructive API
+        # methods. If the volume is full or the backup cannot be validated,
+        # reject the delete instead of losing the only recoverable copy.
+        if request.method == "DELETE" and path.startswith("/api/"):
+            try:
+                await asyncio.to_thread(recovery_service.create_snapshot, account.id, f"Before {request.method} {path[:110]}")
+            except Exception:
+                logger.exception("Unable to create pre-delete recovery point")
+                return JSONResponse({"detail": "Unable to create recovery point. Delete was cancelled; check persistent volume storage."}, status_code=503)
         return await call_next(request)
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -1019,6 +1029,58 @@ def visual_search_status(db: Session = Depends(get_db)):
 
 
 # ------------------------------------------------------------------ #
+# Seller recovery center. File download is authenticated and tenant-scoped.
+# ------------------------------------------------------------------ #
+@app.get("/api/recovery/snapshots")
+def recovery_snapshot_list():
+    return {"items": recovery_service.list_snapshots(int(tenant_id())),
+            "message": "Private restore points are stored on this seller's Railway volume. Download regularly for off-server backups."}
+
+
+@app.post("/api/recovery/snapshots", status_code=201)
+def recovery_snapshot_create():
+    try:
+        return recovery_service.create_snapshot(int(tenant_id()), "Manual recovery point")
+    except Exception as exc:
+        logger.exception("Manual recovery snapshot failed")
+        raise HTTPException(503, "Recovery snapshot could not be saved. Check volume space and permissions.") from exc
+
+
+@app.get("/api/recovery/snapshots/{name}/summary")
+def recovery_snapshot_summary(name: str):
+    try:
+        return recovery_service.snapshot_summary(int(tenant_id()), name)
+    except FileNotFoundError as exc:
+        raise HTTPException(404, "Recovery point not found") from exc
+
+
+@app.get("/api/recovery/snapshots/{name}/archive")
+def recovery_snapshot_archive(name: str):
+    try:
+        archive = recovery_service.prepare_download_archive(int(tenant_id()), name)
+    except FileNotFoundError as exc:
+        raise HTTPException(404, "Recovery point not found") from exc
+    except Exception as exc:
+        logger.exception("Unable to create recovery download archive")
+        raise HTTPException(503, "Recovery archive unavailable; check persistent volume space") from exc
+    return FileResponse(
+        archive, media_type="application/zip", filename=name.replace(".sqlite3", "-backup.zip"),
+        background=BackgroundTask(lambda: archive.unlink(missing_ok=True)),
+        headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
+    )
+
+
+@app.get("/api/recovery/snapshots/{name}/download")
+def recovery_snapshot_download(name: str):
+    try:
+        path = recovery_service.snapshot_path(int(tenant_id()), name)
+    except FileNotFoundError as exc:
+        raise HTTPException(404, "Recovery point not found") from exc
+    return FileResponse(path, media_type="application/octet-stream", filename=path.name,
+                        headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"})
+
+
+# ------------------------------------------------------------------ #
 # Trash: soft delete + restore
 # ------------------------------------------------------------------ #
 @app.delete("/api/products/{sku}", response_model=schemas.DeleteResult)
@@ -1121,23 +1183,11 @@ def list_trash(limit: int | None = Query(None, ge=1, le=100), offset: int = Quer
 
 @app.delete("/api/trash/{sku}")
 def permanently_delete(sku: str, db: Session = Depends(get_db)):
-    """Empties one item from Trash for good - no further undo. Use only to
-    clean up Trash itself; everyday removal is the regular delete above."""
+    """Do not destroy stock history or related orders from seller Trash."""
     product = _get_product_by_sku(db, sku, include_deleted=True)
     if not product.is_deleted:
-        raise HTTPException(400, f"'{sku}' must be in Trash before it can be permanently deleted.")
-    variant_ids = [v.id for v in db.query(models.Variant.id).filter(models.Variant.product_id == product.id)]
-    if variant_ids:
-        db.execute(sa_delete(models.OrderLine).where(models.OrderLine.variant_id.in_(variant_ids)))
-        db.execute(sa_delete(models.ReorderBatchItem).where(models.ReorderBatchItem.variant_id.in_(variant_ids)))
-        db.execute(sa_delete(models.Alert).where(models.Alert.variant_id.in_(variant_ids)))
-        db.execute(sa_delete(models.InventoryTransaction).where(models.InventoryTransaction.variant_id.in_(variant_ids)))
-    # Variant rows themselves are left to the ORM cascade below (Product.variants
-    # is configured cascade="all, delete-orphan") - deleting them here too would
-    # just make SQLAlchemy attempt the same DELETE twice and warn about it.
-    db.delete(product)
-    db.commit()
-    return {"permanently_deleted": sku.strip().upper()}
+        raise HTTPException(400, "Move the product to Trash first.")
+    raise HTTPException(409, "Permanent deletion is disabled to protect inventory and order history. Restore this product from Trash instead.")
 
 
 # ------------------------------------------------------------------ #
