@@ -4,17 +4,26 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>MYRAA · Secure Login</title>
 <link rel="icon" href="assets/myraa-favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="clerk-auth.css?v=4">
+<link rel="stylesheet" href="clerk-auth.css?v=5">
 </head>
 <body data-myraa-clerk="login">
 <main class="clerk-shell">
-  <section class="clerk-brand">
-    <a href="/" class="clerk-wordmark"><img src="assets/myraa-mark.svg" alt="" width="47" height="47"> MYRAA</a>
-    <div class="clerk-brand-content"><span class="clerk-eyebrow">A WORKSPACE FOR EVERY SELLER</span>
-      <h1>All your inventory.<br>One clear workspace.</h1>
-      <p>Manage products, stock, orders and supplier invoices in a private workspace built for fashion sellers.</p>
-      <div class="clerk-lady"><img src="assets/myraa-lady-full.webp" alt="MYRAA assistant character" loading="eager"></div>
+  <section class="clerk-brand" aria-label="Why MYRAA">
+    <a href="/" class="clerk-wordmark" aria-label="MYRAA home"><img src="assets/myraa-mark.svg" alt="" width="43" height="43"> <span>MYRAA</span></a>
+    <div class="clerk-brand-content">
+      <span class="clerk-eyebrow"><span class="clerk-eyebrow-dot" aria-hidden="true"></span> BUILT FOR FASHION SELLERS</span>
+      <h1>Less stock confusion.<br><em>More room to grow.</em></h1>
+      <p class="clerk-vision-lead">Know what you have, what needs restocking, and what is ready to dispatch — without chasing spreadsheets.</p>
+      <div class="clerk-benefit-grid" aria-label="What you can do with MYRAA">
+        <div class="clerk-benefit"><span class="clerk-benefit-icon" aria-hidden="true">▦</span><div><strong>Stay on top of stock</strong><span>Live counts for products and sizes.</span></div></div>
+        <div class="clerk-benefit"><span class="clerk-benefit-icon" aria-hidden="true">▤</span><div><strong>Record supplier invoices</strong><span>Track incoming and received items.</span></div></div>
+        <div class="clerk-benefit"><span class="clerk-benefit-icon" aria-hidden="true">▣</span><div><strong>Scan, count &amp; dispatch</strong><span>Work faster with clear stock records.</span></div></div>
+        <div class="clerk-benefit"><span class="clerk-benefit-icon" aria-hidden="true">♧</span><div><strong>Your own private workspace</strong><span>Separate seller inventory and profile.</span></div></div>
+      </div>
+      <div class="clerk-steps" aria-label="Your daily workflow"><span>PRODUCTS</span><i aria-hidden="true">→</i><span>STOCK</span><i aria-hidden="true">→</i><span>ORDERS</span></div>
     </div>
+    <div class="clerk-brand-bottom"><span class="clerk-brand-smallmark" aria-hidden="true">✦</span><span>One place for your everyday inventory work.</span></div>
+    <div class="clerk-lady"><img src="assets/myraa-lady-full.webp" alt="" loading="lazy"></div>
   </section>
   <section class="clerk-auth-pane">
     <div class="clerk-auth-card">
@@ -25,12 +34,12 @@
         <button type="button" class="clerk-tab active" role="tab" aria-selected="true" aria-controls="clerk-auth-root" id="clerk-tab-login">Sign in</button>
         <button type="button" class="clerk-tab" role="tab" aria-selected="false" aria-controls="clerk-auth-root" id="clerk-tab-signup">Create account</button>
       </div>
-      <div id="clerk-auth-root" class="clerk-auth-root" role="tabpanel" aria-labelledby="clerk-tab-login" aria-live="polite"><p>Loading secure sign in…</p></div>
+      <div id="clerk-auth-root" class="clerk-auth-root" role="tabpanel" aria-labelledby="clerk-tab-login" aria-busy="true"></div>
       <p id="clerk-auth-error" class="clerk-auth-error" role="alert"></p>
-      <p class="clerk-security-caption">Secure authentication by Clerk · Your store data stays private</p>
+      <p class="clerk-security-caption">Protected sign-in · Private seller workspace</p>
     </div>
   </section>
 </main>
-<script src="clerk-auth.js?v=10"></script>
+<script src="clerk-auth.js?v=11"></script>
 </body>
 </html>

@@ -158,11 +158,30 @@
   }
   function showLoadingForm(root,view) {
     root.replaceChildren();
-    const pending=document.createElement('p');
+    root.setAttribute('aria-busy','true');
+    const pending=document.createElement('div');
     pending.className='clerk-form-loading';
     pending.setAttribute('role','status');
-    pending.textContent=`Loading secure ${view==='signup'?'account creation':'sign-in'} form…`;
+    pending.textContent=`Preparing secure ${view==='signup'?'account creation':'sign-in'}…`;
     root.appendChild(pending);
+  }
+  // Clerk mounts asynchronously into the auth root. Remove MYRAA's temporary
+  // status when the real widget appears, instead of leaving a duplicate line
+  // above the form (or hiding Clerk's sign-in / recovery controls).
+  function watchClerkForm(root) {
+    const mounted=()=>!!root.querySelector('.cl-card, .cl-rootBox, .cl-signIn-root, .cl-signUp-root, form, input, iframe');
+    const ready=()=>{
+      if (!mounted()) return false;
+      root.querySelector('.clerk-form-loading')?.remove();
+      root.removeAttribute('aria-busy');
+      root.classList.add('clerk-form-ready');
+      root.closest('.clerk-auth-card')?.classList.add('has-clerk-form');
+      return true;
+    };
+    const observer=new MutationObserver(()=>{if(ready()) observer.disconnect();});
+    observer.observe(root,{childList:true,subtree:true});
+    if(ready()) observer.disconnect();
+    return observer;
   }
   function showMountWarning(root,view) {
     // An SDK component should produce visible content shortly after mount.
@@ -201,6 +220,7 @@
       signUpForceRedirectUrl:home,
       appearance:loginAppearance
     };
+    const formObserver=watchClerkForm(root);
     try {
       if(view==='signup') clerk.mountSignUp(root,props);
       else clerk.mountSignIn(root,props);
@@ -208,6 +228,8 @@
       // A missing Clerk renderer must not silently appear as a successful form.
       setTimeout(()=>showMountWarning(root,view),12000);
     } catch(error) {
+      formObserver.disconnect();
+      root.removeAttribute('aria-busy');
       currentLoginView=null;
       statusLine('Unable to display the secure authentication form.');
       throw error;
