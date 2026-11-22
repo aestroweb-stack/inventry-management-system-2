@@ -18,7 +18,7 @@
 <link rel="stylesheet" href="workspace-auth.css?v=5">
 <link rel="stylesheet" href="clerk-auth.css?v=1">
 <link rel="stylesheet" href="myraa-ui-refresh.css?v=4">
-<link rel="stylesheet" href="myraa-accessible-v2.css?v=2">
+<link rel="stylesheet" href="myraa-accessible-v2.css?v=3">
 </head>
 <body>
 
@@ -238,7 +238,7 @@
 
     <!-- ================= ORDERS ================= -->
     <section id="view-challans" class="view">
-      <header class="view-head myraa-challan-page-head"><div><span class="section-eyebrow">SUPPLIER PURCHASES</span><h1><i class="fa-solid fa-file-invoice-dollar" aria-hidden="true"></i> Purchase Invoice</h1><p class="sub">Record supplier invoices, manage received pieces and export your records.</p></div><a class="btn-secondary myraa-challan-download" href="/api/purchase-challans/template" download="MYRAA_Challan_3_Column_Template.xlsx"><i class="fa-solid fa-file-excel"></i> Download Excel Template</a></header>
+      <header class="view-head myraa-challan-page-head"><div><span class="section-eyebrow">SUPPLIER PURCHASES</span><h1><i class="fa-solid fa-file-invoice-dollar" aria-hidden="true"></i> Purchase Invoice</h1><p class="sub">Record supplier invoices, manage received pieces and export your records.</p></div><a class="btn-secondary myraa-challan-download" href="/api/purchase-challans/template" download="MYRAA_Invoice_3_Column_Template.xlsx"><i class="fa-solid fa-file-excel"></i> Download Excel Template</a></header>
       <section class="myraa-challan-studio" id="myraa-challan-studio" aria-label="Purchase Invoice Editor">
         <header class="cs-header"><div class="cs-title"><span class="cs-logo"><i class="fa-solid fa-receipt"></i></span><div><h2>Purchase Invoice</h2><p>Record purchases from suppliers, track received stock and push to inventory.</p></div></div>
           <div class="cs-header-actions"><button id="cs-new" class="cs-secondary" type="button"><i class="fa-regular fa-file-lines"></i> New Invoice</button><a class="cs-secondary" id="cs-export" href="/api/purchase-challans/template" download><i class="fa-solid fa-download"></i> Download Excel</a></div>
@@ -249,24 +249,24 @@
           <div class="cs-items-head"><h3>Invoice Items</h3><button class="cs-add" type="button" id="cs-add">Add Item</button></div>
           <div id="cs-empty" class="cs-empty"><span class="cs-empty-illustration"><i class="fa-solid fa-box-open" aria-hidden="true"></i></span><h4>No items yet</h4><p>Click <strong>Add Item</strong> to start entering products. Nothing is added automatically.</p></div><div class="cs-table-wrap" id="cs-table-wrap" hidden><table class="cs-table"><thead><tr><th>#</th><th>Product Name / Master SKU</th><th>Size</th><th>Ordered</th><th>Received</th><th>Pending</th><th>Unit Cost (₹)</th><th>Total Cost (₹)</th><th>Action</th></tr></thead><tbody id="cs-rows"></tbody></table></div>
           <div class="cs-bottom"><div class="cs-upload-area"><label class="cs-drop" for="cs-files"><i class="fa-solid fa-cloud-arrow-up"></i><strong>Attach Supplier Invoice</strong><small>PDF, JPG, PNG · Max 10 MB/file</small><input id="cs-files" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" multiple hidden></label><div class="cs-previews" id="cs-previews"></div></div><div class="cs-actions"><button type="submit" id="cs-save" class="cs-secondary"><i class="fa-solid fa-floppy-disk"></i> Save Invoice</button><button type="button" id="cs-push" class="cs-push" disabled><i class="fa-solid fa-boxes-stacked"></i><span>Push Received Stock<small>to Inventory</small></span></button></div></div>
-          <p class="cs-notice">Inventory stock changes only after saving and confirming a fully received challan. A challan can be pushed once.</p><p id="cs-message" role="status" aria-live="polite" class="cs-message"></p><button type="button" id="cs-last-open" class="cs-last-open" hidden>Open saved invoice</button>
+          <p class="cs-notice">Inventory stock updates only after a fully received invoice is saved and confirmed. Each invoice can be posted to stock once.</p><p id="cs-message" role="status" aria-live="polite" class="cs-message"></p><button type="button" id="cs-last-open" class="cs-last-open" hidden>Open saved invoice</button>
         </form>
       </section>
-      <div class="challan-summary" id="challan-summary"><span>Loading challans…</span></div>
+      <div class="challan-summary" id="challan-summary"><span>Loading invoices…</span></div>
       <div class="challan-layout">
         <details class="cs-legacy-import"><summary>Import Invoice from Excel / CSV</summary>
         <form id="challan-import-form" class="panel challan-form">
-          <h2><i class="fa-solid fa-file-arrow-up"></i> Import supplier challan</h2>
+          <h2><i class="fa-solid fa-file-arrow-up"></i> Import Supplier Invoice</h2>
           <div class="challan-form-grid">
-            <label class="field">Party / Supplier<input class="input" name="party_name" required maxlength="180" placeholder="Supplier name"></label>
-            <label class="field">Challan Number<input class="input" name="challan_no" required maxlength="120" placeholder="CH-001"></label>
+            <label class="field">Supplier<input class="input" name="party_name" required maxlength="180" placeholder="Supplier name"></label>
+            <label class="field">Supplier Reference No.<input class="input" name="challan_no" required maxlength="120" placeholder="CH-001"></label>
             <label class="field">Invoice Number (optional)<input class="input" name="invoice_no" maxlength="120" placeholder="INV-001"></label>
             <label class="field">Order Date<input class="input" name="order_date" type="date" required></label>
           </div>
           <label class="field invoice-file-zone" id="invoice-file-zone" for="invoice-excel-file"><span class="invoice-file-icon"><i class="fa-solid fa-file-excel" aria-hidden="true"></i></span><strong>Upload Excel / CSV invoice</strong><small>Drag your file here, or click to browse</small><span class="invoice-file-choose" aria-hidden="true"><i class="fa-solid fa-folder-open"></i> Browse files</span><span class="invoice-file-selected" id="invoice-file-name" aria-live="polite">.xlsx, .xls or .csv · Max 12 MB</span><input id="invoice-excel-file" class="invoice-file-native" type="file" name="file" accept=".xlsx,.xls,.csv" required aria-label="Choose supplier invoice Excel or CSV file"></label><a class="invoice-template-link" href="/api/purchase-challans/template" download><i class="fa-solid fa-download"></i> Download Sample Excel Template</a>
           <p class="hint">Simple Excel: <strong>Product Name · Size · Qty</strong>. After import, enter how many pieces arrived and their purchase rate before pushing to stock.</p>
           <div class="field challan-invoice-upload" id="invoice-scan-picker">
-            <span class="invoice-scan-heading"><i class="fa-regular fa-images" aria-hidden="true"></i> Challan / invoice scan (optional)</span>
+            <span class="invoice-scan-heading"><i class="fa-regular fa-images" aria-hidden="true"></i> >Invoice photos / PDFs (optional)</span>
             <label class="invoice-scan-dropzone" id="invoice-scan-dropzone" for="invoice-scan-files">
               <span class="invoice-scan-symbol"><i class="fa-solid fa-images" aria-hidden="true"></i></span>
               <strong>Add invoice photos or PDFs</strong>
@@ -307,7 +307,7 @@
       <header class="view-head">
         <div><h1>Packing Picklist Generator</h1><p class="sub">Automatically group by seller/brand, party, product design and size. Same product and size quantities merge; each printed page has up to 40 rows.</p></div>
       </header>
-      <div class="packing-notice"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> Packing-only export: inventory stock, imported orders aur dispatch <strong>change nahi honge.</strong></div>
+      <div class="packing-notice"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> Packing picklists are for reference only. <strong>Inventory stock, imported orders, and dispatch records will not be changed.</strong></div>
       <div class="packing-grid">
         <section class="panel packing-upload">
           <h2><i class="fa-solid fa-file-excel"></i> 1 · Upload original picklist</h2>
@@ -320,8 +320,8 @@
           <div class="packing-options">
             <label>Picklist date <input id="packing-date" class="input" type="date" aria-label="Picklist date"></label>
           </div>
-          <label class="packing-check"><input id="packing-audit" type="checkbox"> Extra Review and Source Audit tabs add karo (optional)</label>
-          <p class="hint">Picklist se brand, party, product, optional color aur size automatically identify honge. Same product + size ki quantity merge hogi. Print layout black-and-white rahega. Ambiguous SKUs audit/review mein rahenge.</p>
+          <label class="packing-check"><input id="packing-audit" type="checkbox"> Include Review and Source Audit sheets (optional)</label>
+          <p class="hint">The import identifies brand, supplier, product, optional color, and size. Quantities for the same product and size are grouped. Printouts use a black-and-white layout. Ambiguous SKUs are listed in the Review and Audit sheets.</p>
           <div class="packing-actions"><button id="packing-preview" class="btn-secondary" type="button" disabled><i class="fa-solid fa-eye"></i> Check & Preview</button><button id="packing-export" class="btn-primary" type="button" disabled><i class="fa-solid fa-file-arrow-down"></i> Download Excel</button></div>
           <p id="packing-status" class="hint" role="status" aria-live="polite">Upload a file to begin.</p>
         </section>
@@ -365,7 +365,7 @@
 
     <!-- ================= ALERTS ================= -->
     <section id="view-alerts" class="view">
-      <header class="view-head"><div><h1>Alerts</h1><p class="sub">Design aur size wise alerts. Update stock securely within your seller workspace.</p></div>
+      <header class="view-head"><div><h1>Alerts</h1><p class="sub">Product- and size-level stock alerts. Update inventory securely in your private seller workspace.</p></div>
       </header>
       <input id="alerts-search" type="search" placeholder="Search by design, SKU, size or alert type…" class="input alerts-search" aria-label="Search alerts">
       <p id="alerts-note" class="hint"></p>

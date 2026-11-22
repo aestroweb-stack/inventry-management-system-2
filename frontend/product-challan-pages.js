@@ -73,5 +73,5 @@
   // For accessibility: indicate which dedicated screen is visible.
   const detail = document.getElementById('view-detail');
   detail?.setAttribute('aria-label', 'Edit product and its inventory');
-  document.getElementById('view-challans')?.setAttribute('aria-label', 'Purchase challans and inbound stock');
+  document.getElementById('view-challans')?.setAttribute('aria-label', 'Purchase invoices and inbound stock');
 })();

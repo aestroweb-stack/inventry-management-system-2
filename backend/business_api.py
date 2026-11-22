@@ -29,7 +29,7 @@ from business_models import ProductCost, VariantCost, MarketplaceSkuAlias, Produ
 from services import excel_service, inventory_service, alert_service
 from services.table_reader import read_table, clean_code, to_int
 
-router = APIRouter(prefix="/api", tags=["Finance and purchase challans"])
+router = APIRouter(prefix="/api", tags=["Finance and purchase invoices"])
 MAX_EXCEL_SIZE = 12 * 1024 * 1024
 MAX_INVOICE_BYTES = 10 * 1024 * 1024
 MAX_CHALLAN_ATTACHMENTS = 12
@@ -303,7 +303,7 @@ def parse_challan_file(blob: bytes, filename: str, db: Session | None = None):
     except Exception as exc:
         raise HTTPException(422, str(exc)) from exc
     if df.empty or len(df) > 10000:
-        raise HTTPException(422, "Challan must have 1–10,000 rows")
+        raise HTTPException(422, "Invoice must contain between 1 and 10,000 rows")
     merged = defaultdict(lambda: {"quantity": 0})
     for idx, raw in enumerate(df.to_dict("records"), 2):
         sku = (pick(raw, SKU_FIELDS) or "").strip().upper()
@@ -351,7 +351,7 @@ def parse_challan_file(blob: bytes, filename: str, db: Session | None = None):
         existing.update({"sku": sku, "size": size, "name": name, "category": category, "unit_cost": cost})
         existing["quantity"] += qty
     if not merged:
-        raise HTTPException(422, "No valid challan rows found")
+        raise HTTPException(422, "No valid invoice rows found")
     return list(merged.values())
 
 
@@ -439,7 +439,7 @@ def download_challan_template():
     rows = [["Product Name", "Size", "Qty"], ["URVISHA RED", "S", 20], ["URVISHA RED", "M", 25]]
     return StreamingResponse(io.BytesIO(_simple_xlsx(rows)),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": 'attachment; filename="MYRAA_Challan_3_Column_Template.xlsx"'})
+        headers={"Content-Disposition": 'attachment; filename="MYRAA_Invoice_3_Column_Template.xlsx"'})
 
 
 
@@ -448,7 +448,7 @@ def download_challan_template():
 @router.get("/purchase-challans/export-records")
 def export_all_invoice_records(db: Session = Depends(get_db)):
     """Export invoice records scoped to the authenticated seller's tenant database."""
-    rows = [["Invoice No", "Supplier / Party", "Invoice Date", "Status",
+    rows = [["Invoice No", "Supplier", "Invoice Date", "Status",
              "Product", "Master SKU", "Size", "Ordered", "Received",
              "Pending", "Unit Cost INR", "Received Value INR"]]
     batches = (db.query(PurchaseChallan)
@@ -532,7 +532,7 @@ def delete_saved_purchase_invoice(batch_id: int, db: Session = Depends(get_db)):
 def get_purchase_challan(batch_id: int, db: Session = Depends(get_db)):
     b = db.query(PurchaseChallan).options(selectinload(PurchaseChallan.lines)).filter_by(id=batch_id).first()
     if not b:
-        raise HTTPException(404, "Challan not found")
+        raise HTTPException(404, "Invoice not found")
     return serialize_challan(b)
 
 
@@ -540,7 +540,7 @@ def get_purchase_challan(batch_id: int, db: Session = Depends(get_db)):
 async def import_challan(file: UploadFile = File(...), party_name: str = Form(...), challan_no: str = Form(...), invoice_no: str = Form(""), order_date: str = Form(""), db: Session = Depends(get_db)):
     party, number = party_name.strip()[:180], challan_no.strip()[:120]
     if not party or not number:
-        raise HTTPException(422, "Party and challan number required")
+        raise HTTPException(422, "Supplier and invoice reference number are required")
     d = order_date.strip() or date.today().isoformat()
     try:
         date.fromisoformat(d)
@@ -550,9 +550,9 @@ async def import_challan(file: UploadFile = File(...), party_name: str = Form(..
     rows = parse_challan_file(data, file.filename or "", db=db)
     filehash = hashlib.sha256(data + party.upper().encode() + number.upper().encode()).hexdigest()
     if db.query(PurchaseChallan).filter_by(file_hash=filehash).first():
-        raise HTTPException(409, "This challan file was imported earlier")
+        raise HTTPException(409, "This invoice file was imported earlier")
     if db.query(PurchaseChallan).filter(func.upper(PurchaseChallan.party_name) == party.upper(), func.upper(PurchaseChallan.challan_no) == number.upper()).first():
-        raise HTTPException(409, "Party + challan number already exists")
+        raise HTTPException(409, "This supplier and invoice reference number already exist")
     batch = PurchaseChallan(party_name=party, challan_no=number, invoice_no=invoice_no.strip()[:120], order_date=d, source_filename=(file.filename or "upload.xlsx")[:255], file_hash=filehash)
     db.add(batch)
     db.flush()
@@ -574,9 +574,9 @@ def _invoice_file_path(storage_filename: str) -> Path:
 async def upload_challan_attachments(batch_id: int, files: list[UploadFile] = File(...), db: Session = Depends(get_db)):
     batch = db.query(PurchaseChallan).filter_by(id=batch_id).first()
     if not batch:
-        raise HTTPException(404, "Challan not found")
+        raise HTTPException(404, "Invoice not found")
     if not files or len(files) + db.query(PurchaseChallanAttachment).filter_by(challan_id=batch_id).count() > MAX_CHALLAN_ATTACHMENTS:
-        raise HTTPException(422, f"Maximum {MAX_CHALLAN_ATTACHMENTS} images/documents per challan")
+        raise HTTPException(422, f"Maximum {MAX_CHALLAN_ATTACHMENTS} attachments per invoice")
     challan_image_dir().mkdir(parents=True, exist_ok=True)
     stored = []
     try:
@@ -597,7 +597,7 @@ async def upload_challan_attachments(batch_id: int, files: list[UploadFile] = Fi
                 except (UnidentifiedImageError, ValueError, OSError, Image.DecompressionBombError):
                     pass
             if not kind:
-                raise HTTPException(422, "Only valid JPG, PNG, WEBP or PDF challan scans are allowed")
+                raise HTTPException(422, "Only valid JPG, PNG, WEBP or PDF invoice attachments are allowed")
             storage = f"{uuid.uuid4().hex}.{kind[0]}"
             target = _invoice_file_path(storage)
             with open(target, "xb") as fh:
@@ -620,7 +620,7 @@ async def upload_challan_attachments(batch_id: int, files: list[UploadFile] = Fi
 def download_challan_attachment(batch_id: int, attachment_id: int, db: Session = Depends(get_db)):
     record = db.query(PurchaseChallanAttachment).filter_by(id=attachment_id, challan_id=batch_id).first()
     if not record:
-        raise HTTPException(404, "Challan attachment not found")
+        raise HTTPException(404, "Invoice attachment not found")
     path = _invoice_file_path(record.storage_filename)
     if not path.is_file():
         raise HTTPException(404, "Saved scan unavailable: check persistent Railway file volume")
@@ -633,9 +633,9 @@ def delete_challan_attachment(batch_id: int, attachment_id: int, db: Session = D
     """Remove a mistaken pre-posting document; retain posted bill evidence."""
     record = db.query(PurchaseChallanAttachment).filter_by(id=attachment_id, challan_id=batch_id).first()
     if not record:
-        raise HTTPException(404, "Challan attachment not found")
+        raise HTTPException(404, "Invoice attachment not found")
     if record.challan.status == "POSTED":
-        raise HTTPException(409, "Posted challan documents are retained for audit")
+        raise HTTPException(409, "Posted invoice documents are retained for audit")
     path = _invoice_file_path(record.storage_filename)
     db.delete(record)
     db.commit()
@@ -670,7 +670,7 @@ def _simple_xlsx(rows: list[list]):
     with ZipFile(output, 'w', ZIP_DEFLATED) as z:
         z.writestr('[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>')
         z.writestr('_rels/.rels', '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>')
-        z.writestr('xl/workbook.xml', '<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Challan Items" sheetId="1" r:id="rId1"/></sheets></workbook>')
+        z.writestr('xl/workbook.xml', '<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Invoice Items" sheetId="1" r:id="rId1"/></sheets></workbook>')
         z.writestr('xl/_rels/workbook.xml.rels', '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>')
         z.writestr('xl/worksheets/sheet1.xml', sheet)
     return output.getvalue()
@@ -680,7 +680,7 @@ def _simple_xlsx(rows: list[list]):
 def export_challan(batch_id: int, db: Session = Depends(get_db)):
     batch = db.query(PurchaseChallan).options(selectinload(PurchaseChallan.lines)).filter_by(id=batch_id).first()
     if not batch:
-        raise HTTPException(404, "Challan not found")
+        raise HTTPException(404, "Invoice not found")
     rows = [["Product Name", "Size", "Qty Ordered", "Qty Received", "Qty Pending", "Unit Cost INR", "Received Value INR", "Pending Value INR", "Master SKU"]]
     for line in batch.lines:
         cost = float(line.unit_cost) if line.unit_cost is not None else None
@@ -688,7 +688,7 @@ def export_challan(batch_id: int, db: Session = Depends(get_db)):
                      line.qty_ordered - line.qty_received, cost if cost is not None else "",
                      round(cost * line.qty_received, 2) if cost is not None else "",
                      round(cost * (line.qty_ordered - line.qty_received), 2) if cost is not None else "", line.sku])
-    filename = f"MYRAA_Challan_{batch.id}.xlsx"
+    filename = f"MYRAA_Invoice_{batch.id}.xlsx"
     return StreamingResponse(io.BytesIO(_simple_xlsx(rows)),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'})
@@ -708,7 +708,7 @@ class ReceiptUpdate(BaseModel):
 def update_receipt(batch_id: int, payload: ReceiptUpdate, db: Session = Depends(get_db)):
     batch = db.query(PurchaseChallan).options(selectinload(PurchaseChallan.lines)).filter_by(id=batch_id).first()
     if not batch:
-        raise HTTPException(404, "Challan not found")
+        raise HTTPException(404, "Invoice not found")
     if batch.status == "POSTED":
         raise HTTPException(409, "Already pushed to inventory; receipt is locked")
     line_index = {x.id: x for x in batch.lines}
@@ -732,14 +732,14 @@ def update_receipt(batch_id: int, payload: ReceiptUpdate, db: Session = Depends(
 def push_challan_to_inventory(batch_id: int, db: Session = Depends(get_db)):
     batch = db.query(PurchaseChallan).filter_by(id=batch_id).with_for_update().first()
     if not batch:
-        raise HTTPException(404, "Challan not found")
+        raise HTTPException(404, "Invoice not found")
     if batch.status == "POSTED":
-        raise HTTPException(409, "This challan has already been pushed; inventory not changed twice")
+        raise HTTPException(409, "This invoice has already been posted; inventory was not updated twice")
     lines = db.query(PurchaseChallanLine).filter_by(challan_id=batch_id).order_by(PurchaseChallanLine.id).all()
     if not lines or any(x.qty_received != x.qty_ordered for x in lines):
-        raise HTTPException(409, "All sizes must be fully received before pushing the challan. Pending quantities remain visible.")
+        raise HTTPException(409, "Receive all ordered sizes before posting the invoice. Pending quantities will remain visible.")
     if any(x.unit_cost is None for x in lines):
-        raise HTTPException(409, "Fill Unit Cost for every challan line before pushing, to keep inventory costing accurate.")
+        raise HTTPException(409, "Enter unit cost for every invoice item before posting, to keep inventory costing accurate.")
     try:
         for item in lines:
             product = db.query(models.Product).filter_by(sku=item.sku).first()
@@ -834,10 +834,10 @@ def _draft_status(lines):
 @router.post('/purchase-challans/manual',status_code=201)
 def create_manual_challan(payload: ChallanDraft, db: Session=Depends(get_db)):
     party=payload.party_name.strip();number=payload.challan_no.strip()
-    if not party or not number:raise HTTPException(422,'Party and challan no required')
+    if not party or not number:raise HTTPException(422,'Supplier and invoice reference number are required')
     lines=_draft_lines(db,payload)
     if db.query(PurchaseChallan).filter(func.upper(PurchaseChallan.party_name)==party.upper(),func.upper(PurchaseChallan.challan_no)==number.upper()).first():
-        raise HTTPException(409,'This party/challan number already exists')
+        raise HTTPException(409,'This supplier and invoice reference number already exist')
     batch=PurchaseChallan(party_name=party,challan_no=number,invoice_no=payload.invoice_no.strip(),order_date=payload.order_date,
         source_filename='manual',file_hash=hashlib.sha256(uuid.uuid4().bytes).hexdigest(),status=_draft_status(lines))
     db.add(batch);db.flush()
@@ -848,12 +848,12 @@ def create_manual_challan(payload: ChallanDraft, db: Session=Depends(get_db)):
 @router.put('/purchase-challans/{batch_id}/manual')
 def edit_manual_challan(batch_id:int,payload:ChallanDraft,db:Session=Depends(get_db)):
     batch=db.query(PurchaseChallan).filter_by(id=batch_id).with_for_update().first()
-    if batch is None:raise HTTPException(404,'Challan not found')
-    if batch.status=='POSTED':raise HTTPException(409,'Stock already posted; cannot edit challan')
+    if batch is None:raise HTTPException(404,'Invoice not found')
+    if batch.status=='POSTED':raise HTTPException(409,'Stock has already been posted; this invoice cannot be edited')
     party=payload.party_name.strip();number=payload.challan_no.strip()
-    if not party or not number:raise HTTPException(422,'Party and challan no required')
+    if not party or not number:raise HTTPException(422,'Supplier and invoice reference number are required')
     duplicate=db.query(PurchaseChallan).filter(func.upper(PurchaseChallan.party_name)==party.upper(),func.upper(PurchaseChallan.challan_no)==number.upper(),PurchaseChallan.id!=batch_id).first()
-    if duplicate:raise HTTPException(409,'Challan number already exists for party')
+    if duplicate:raise HTTPException(409,'Invoice reference number already exists for this supplier')
     lines=_draft_lines(db,payload)
     batch.party_name=party;batch.challan_no=number;batch.invoice_no=payload.invoice_no.strip();batch.order_date=payload.order_date;batch.status=_draft_status(lines)
     db.query(PurchaseChallanLine).filter_by(challan_id=batch_id).delete(synchronize_session=False)

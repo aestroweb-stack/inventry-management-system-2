@@ -159,3 +159,59 @@ input,select,textarea,button{max-width:100%}
 @media (prefers-reduced-motion:reduce){
  .rail-collapse,.visual-scanner-panel,.visual-scan-controls button{transition:none!important;scroll-behavior:auto!important}
 }
+
+
+/* MYRAA navigation brand/collapse separation — prevents the arrow covering MYRAA. */
+#sidebar .rail-identity {
+  display:grid;
+  grid-template-columns:48px minmax(0,1fr);
+  grid-template-rows:minmax(54px,auto) 36px;
+  grid-template-areas:"brand-icon brand-name" ". brand-toggle";
+  align-items:center;
+  column-gap:10px;
+  row-gap:3px;
+  min-height:124px;
+  padding:8px 9px 12px;
+  overflow:visible;
+}
+#sidebar .rail-identity-mark {grid-area:brand-icon;width:48px;height:48px;min-width:48px}
+#sidebar .rail-identity-name {grid-area:brand-name;min-width:0;max-width:100%;overflow:hidden}
+#sidebar .rail-identity-name strong {
+  display:block;white-space:nowrap;max-width:100%;
+  font-size:clamp(20px,1.85vw,27px);line-height:1.1;
+  overflow:hidden;text-overflow:clip;
+}
+#sidebar .rail-identity-name small {font-size:9px;line-height:1.4;overflow-wrap:normal}
+#sidebar .rail-collapse {
+  grid-area:brand-toggle;position:static!important;
+  inset:auto!important;transform:none!important;
+  justify-self:end;align-self:center;
+  width:36px;height:34px;min-width:36px;
+  display:flex;align-items:center;justify-content:center;
+  margin:0;border-radius:10px;
+}
+#sidebar .rail-collapse .rail-chevron{font-size:27px;line-height:1;transform:none}
+.sidebar-collapsed #sidebar .rail-identity {
+  grid-template-columns:1fr;
+  grid-template-rows:48px 36px;
+  grid-template-areas:"brand-icon" "brand-toggle";
+  justify-items:center;
+  min-height:114px;
+  padding:8px 0 12px;
+}
+.sidebar-collapsed #sidebar .rail-collapse {
+  justify-self:center;
+  position:static!important;inset:auto!important;transform:none!important;
+}
+.sidebar-collapsed #sidebar .rail-collapse .rail-chevron{transform:rotate(180deg)}
+@media(min-width:1024px) and (max-width:1330px){
+  #sidebar .rail-identity-name strong{font-size:24px}
+}
+@media(min-width:761px) and (max-width:1023px){
+  #sidebar .rail-identity{grid-template-rows:54px;grid-template-areas:"brand-icon brand-name";min-height:83px}
+  #sidebar .rail-collapse{display:none!important}
+}
+@media(max-width:760px){
+  #sidebar .rail-identity{grid-template-rows:54px 36px}
+  #sidebar .rail-collapse{display:flex!important}
+}

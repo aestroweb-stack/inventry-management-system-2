@@ -204,7 +204,7 @@
     const listing=$('challan-batches');if(!listing)return;
     const page=challanRows;
     const totalPages=Math.max(1,Math.ceil(challanTotal/PAGE_SIZE));
-    listing.innerHTML=page.length ? `<div class="invoice-records-scroll"><table class="invoice-records-table"><thead><tr><th>Invoice No.</th><th>Supplier / Party</th><th>Date</th><th>Items</th><th>Received / Ordered</th><th>Value</th><th>Status</th><th>Actions</th></tr></thead><tbody>${page.map(b=>`<tr class="${b.id===selectedId?'is-selected':''}"><td><strong>${E(b.challan_no)}</strong><small>${E(b.invoice_no||'')}</small></td><td>${E(b.party_name)}</td><td>${E(b.order_date)}</td><td>${(b.lines||[]).length}</td><td>${b.received} / ${b.ordered} pcs</td><td>${money(b.received_value_known)}</td><td><span class="invoice-status invoice-status-${E(b.status)}">${E(b.status)}</span></td><td class="invoice-record-actions"><button type="button" data-id="${b.id}" data-action="view" aria-label="View invoice ${E(b.challan_no)}"><i class="fa-regular fa-eye"></i> View</button><button type="button" data-id="${b.id}" data-action="edit" ${b.status==='POSTED'?'disabled title="Posted invoices cannot be edited"':''} aria-label="Edit invoice ${E(b.challan_no)}"><i class="fa-solid fa-pen"></i> Edit</button><a href="/api/purchase-challans/${b.id}/export" download="MYRAA_Invoice_${b.id}.xlsx" aria-label="Download invoice ${E(b.challan_no)} Excel"><i class="fa-solid fa-file-excel"></i> Excel</a><button type="button" class="invoice-delete-action" data-id="${b.id}" data-action="delete" ${b.status==='POSTED'?'disabled title="Posted invoices cannot be deleted"':''} aria-label="Delete invoice ${E(b.challan_no)}" title="Delete saved draft invoice"><i class="fa-solid fa-trash-can" aria-hidden="true"></i><span class="sr-only">Delete invoice</span></button></td></tr>`).join('')}</tbody></table></div>` : '<div class="invoice-no-records"><i class="fa-regular fa-folder-open"></i><strong>No saved invoices found</strong><span>Try clearing the search filters or create your first invoice.</span></div>';
+    listing.innerHTML=page.length ? `<div class="invoice-records-scroll"><table class="invoice-records-table"><thead><tr><th>Invoice No.</th><th>Supplier</th><th>Date</th><th>Items</th><th>Received / Ordered</th><th>Value</th><th>Status</th><th>Actions</th></tr></thead><tbody>${page.map(b=>`<tr class="${b.id===selectedId?'is-selected':''}"><td><strong>${E(b.challan_no)}</strong><small>${E(b.invoice_no||'')}</small></td><td>${E(b.party_name)}</td><td>${E(b.order_date)}</td><td>${(b.lines||[]).length}</td><td>${b.received} / ${b.ordered} pcs</td><td>${money(b.received_value_known)}</td><td><span class="invoice-status invoice-status-${E(b.status)}">${E(b.status)}</span></td><td class="invoice-record-actions"><button type="button" data-id="${b.id}" data-action="view" aria-label="View invoice ${E(b.challan_no)}"><i class="fa-regular fa-eye"></i> View</button><button type="button" data-id="${b.id}" data-action="edit" ${b.status==='POSTED'?'disabled title="Posted invoices cannot be edited"':''} aria-label="Edit invoice ${E(b.challan_no)}"><i class="fa-solid fa-pen"></i> Edit</button><a href="/api/purchase-challans/${b.id}/export" download="MYRAA_Invoice_${b.id}.xlsx" aria-label="Download invoice ${E(b.challan_no)} Excel"><i class="fa-solid fa-file-excel"></i> Excel</a><button type="button" class="invoice-delete-action" data-id="${b.id}" data-action="delete" ${b.status==='POSTED'?'disabled title="Posted invoices cannot be deleted"':''} aria-label="Delete invoice ${E(b.challan_no)}" title="Delete saved draft invoice"><i class="fa-solid fa-trash-can" aria-hidden="true"></i><span class="sr-only">Delete invoice</span></button></td></tr>`).join('')}</tbody></table></div>` : '<div class="invoice-no-records"><i class="fa-regular fa-folder-open"></i><strong>No saved invoices found</strong><span>Try clearing the search filters or create your first invoice.</span></div>';
     listing.querySelectorAll('button[data-id]').forEach(button=>button.addEventListener('click',()=>{
       const id = Number(button.dataset.id);
       if (button.dataset.action === 'delete') {
@@ -258,7 +258,7 @@
   $('challan-page-next')?.addEventListener('click',()=>{if((challanPage+1)*PAGE_SIZE<challanTotal){challanPage++;loadChallans();}});
   async function uploadScans(batchId, files) {
     if (!files?.length) return;
-    if (files.length>12) throw new Error('Maximum 12 invoice scans per challan');
+    if (files.length>12) throw new Error('Maximum 12 invoice attachments are allowed');
     const fd=new FormData();Array.from(files).forEach(f=>fd.append('files',f));
     return json(`/api/purchase-challans/${batchId}/attachments`,{method:'POST',body:fd});
   }
@@ -319,7 +319,7 @@
       <header class="challan-detail-head"><div><h2>${E(selected.party_name)} · ${E(selected.challan_no)}</h2>
         <p class="hint">${E(selected.order_date)} · Invoice ${E(selected.invoice_no||'—')} · ${E(selected.status)}</p></div>
         <div><strong>${selected.received}/${selected.ordered} arrived</strong><small>${selected.pending} pending · Received goods ${money(selected.received_value_known)}</small>
-          <a class="btn-secondary" href="/api/purchase-challans/${selected.id}/export" download="MYRAA_Challan_${selected.id}.xlsx"><i class="fa-solid fa-file-excel"></i> Download Excel</a></div></header>
+          <a class="btn-secondary" href="/api/purchase-challans/${selected.id}/export" download="MYRAA_Invoice_${selected.id}.xlsx"><i class="fa-solid fa-file-excel"></i> Download Excel</a></div></header>
       <div class="table-wrap"><table class="grid challan-lines"><thead><tr><th>Product Name / Master SKU</th><th>Size</th><th>Qty Ordered</th><th>PCS Arrived</th><th>Pending</th><th>Unit cost ₹</th><th>Arrived value</th></tr></thead>
         <tbody>${selected.lines.map(line=>`<tr><td><strong>${E(line.name)}</strong><small>${E(line.sku)}</small></td><td><b>${E(line.size)}</b></td><td>${line.qty_ordered}</td>
           <td><input class="input" type="number" min="0" max="${line.qty_ordered}" step="1" data-received="${line.id}" value="${line.qty_received}" ${selected.status==='POSTED'?'disabled':''}></td>
@@ -329,9 +329,9 @@
         <button id="challan-receive-all" type="button" class="btn-secondary" ${selected.status==='POSTED'?'disabled':''}>Mark all arrived</button>
         <button id="challan-push" class="btn-primary" type="button" ${selected.status!=='READY'?'disabled':''}><i class="fa-solid fa-boxes-stacked"></i> Push to Inventory</button>
         <p class="hint">Stock changes only after all pieces arrived, costs were saved, and Push was confirmed. No duplicate push.</p></div>
-      <section class="challan-attachments"><div class="challan-attachments-title"><h3><i class="fa-solid fa-paperclip"></i> Challan / Invoice Images</h3><small>One bill may contain multiple products · up to 12 scans</small></div>
+      <section class="challan-attachments"><div class="challan-attachments-title"><h3><i class="fa-solid fa-paperclip"></i> >Invoice Photos / PDFs</h3><small>One bill may contain multiple products · up to 12 scans</small></div>
         <div class="challan-scans">${attachments||'<p class="hint">No documents uploaded for this bill yet.</p>'}</div>
-        <label class="challan-scan-picker"><i class="fa-solid fa-plus"></i> Add challan image/PDF<input id="challan-extra-images" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" multiple hidden></label></section>
+        <label class="challan-scan-picker"><i class="fa-solid fa-plus"></i> Add invoice photo / PDF<input id="challan-extra-images" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" multiple hidden></label></section>
       <p id="challan-detail-msg" class="business-message" role="status" aria-live="polite"></p>`;
     host.querySelector('#challan-receive-all')?.addEventListener('click',()=>host.querySelectorAll('[data-received]').forEach(input=>{input.value=input.max;}));
     const receiptPayload=()=>selected.lines.map(line=>{
@@ -369,13 +369,13 @@
     button.disabled=true;
     try{
       const uploads=Array.from(form.querySelector('[name=invoice_images]')?.files||[]);
-      if(uploads.length>12)throw new Error('Choose at most 12 scans per challan');
+      if(uploads.length>12)throw new Error('Choose up to 12 invoice attachments');
       const fd=new FormData(form);fd.delete('invoice_images');
       const batch=await json('/api/purchase-challans/import',{method:'POST',body:fd});
       selectedId=batch.id;
       let warning='';
       if(uploads.length){try{await uploadScans(batch.id,uploads);}catch(err){warning=` Bill imported, but scans were not saved: ${err.message}. Retry inside bill details.`;}}
-      form.reset();notice(message,warning||'Challan imported. Save received pieces and unit costs before posting.',!!warning);
+      form.reset();notice(message,warning||'Invoice imported. Save received quantities and unit costs before posting to inventory.',!!warning);
       await loadChallans(); await openChallan(batch.id);
     }catch(err){notice(message,err.message,true);}finally{button.disabled=false;}
   });
