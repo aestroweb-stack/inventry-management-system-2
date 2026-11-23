@@ -20,6 +20,7 @@
 <link rel="stylesheet" href="myraa-ui-refresh.css?v=4">
 <link rel="stylesheet" href="myraa-accessible-v2.css?v=3">
 <link rel="stylesheet" href="myraa-premium-nav.css?v=1">
+<link rel="stylesheet" href="myraa-feedback.css?v=1">
 </head>
 <body>
 
@@ -501,18 +502,6 @@
   </div>
 </div>
 
-<!-- ================= CONFIRM MODAL ================= -->
-<div id="confirm-modal" class="modal-backdrop" hidden>
-  <div class="modal-card modal-sm">
-    <h2 id="confirm-title">Are you sure?</h2>
-    <p id="confirm-body" class="hint"></p>
-    <div class="modal-actions-end">
-      <button id="confirm-cancel" class="btn-ghost">Cancel</button>
-      <button id="confirm-ok" class="btn-danger">Delete</button>
-    </div>
-  </div>
-</div>
-
 <div id="add-size-modal" class="modal-backdrop" hidden>
   <section class="modal-card modal-sm add-size-card" role="dialog" aria-modal="true" aria-labelledby="add-size-title">
     <header class="modal-head"><div><h2 id="add-size-title">Add size</h2><p id="add-size-product-name" class="hint"></p></div><button id="close-add-size" class="icon-btn" type="button" aria-label="Close"><i class="fa-solid fa-xmark"></i></button></header>
@@ -531,10 +520,11 @@
 
 <div id="app-loading-indicator" class="app-loading-indicator" role="status" aria-live="polite" aria-label="Loading app data"><span></span></div>
 
-<div id="toast" class="toast" hidden></div>
+<!-- Rich MYRAA notifications are injected by myraa-feedback.js. -->
 <footer class="myraa-owner-footer">© 2026 <strong>Hacker Room</strong>. All rights reserved. <a href="mailto:aestroweb@gmail.com">aestroweb@gmail.com</a> · <a href="tel:+918630404031">+91 8630404031</a></footer>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+<script src="myraa-feedback.js?v=1"></script>
 <script src="myraa-auth-gate.js?v=401-gate-1"></script>
 <script src="app.js?v=myraa-no-legacy-gate-1"></script>
 <script src="myraa-signature-v3.js?v=4"></script>

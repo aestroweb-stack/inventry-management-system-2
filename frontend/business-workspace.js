@@ -16,6 +16,7 @@
     if (!el) return;
     el.textContent = message;
     el.className = error ? 'business-message is-error' : 'business-message';
+    if (error && message) window.MYRAAUI.error(message);
   };
 
   // Both scopes are explicit; whole-product SKU needs Size in the order sheet.
@@ -111,7 +112,7 @@
       catch(err){notice(feedback,err.message,true);}finally{button.disabled=false;}
     });
     block.querySelectorAll('.business-remove-alias').forEach(button=>button.addEventListener('click',async()=>{
-      if(!window.confirm('Remove this marketplace SKU link? Past orders will stay unchanged.'))return;
+      if(!await window.MYRAAUI.confirm('Remove this marketplace SKU link? Past orders will stay unchanged.',{title:'Remove SKU link?',confirmText:'Remove link',variant:'danger'}))return;
       const prefix=button.dataset.aliasType==='product'?'product-marketplace-aliases':'marketplace-aliases';
       try{await json(`${endpoint}/${prefix}/${button.dataset.aliasId}`,{method:'DELETE'});await refresh();}
       catch(err){notice(feedback,err.message,true);}
@@ -223,7 +224,7 @@
     const record = challanRows.find(b => b.id === id);
     if (!record || record.status === 'POSTED') return;
     const label = record.challan_no || `#${id}`;
-    if (!window.confirm(`Delete invoice ${label} from ${record.party_name}?\n\nAll saved items and scans for this invoice will be removed. This cannot be undone. Stock-posted invoices are protected.`)) return;
+    if (!await window.MYRAAUI.confirm(`Delete invoice ${label} from ${record.party_name}?\n\nAll saved items and scans for this invoice will be removed. This cannot be undone. Stock-posted invoices are protected.`,{title:'Delete saved invoice?',confirmText:'Delete invoice',variant:'danger'})) return;
     deletingInvoice = true;
     button.disabled = true;
     button.setAttribute('aria-busy','true');
@@ -237,7 +238,7 @@
       }
       await loadChallans();
     } catch (error) {
-      window.alert(`Could not delete invoice: ${error.message}`);
+      window.MYRAAUI.error(`Could not delete invoice: ${error.message}`);
     } finally {
       deletingInvoice=false;
       if (button.isConnected) {
@@ -298,7 +299,7 @@
         const studio=$('myraa-challan-studio');studio?.scrollIntoView({behavior:'smooth',block:'start'});
         if(mode==='edit')$('cs-party')?.focus({preventScroll:true});
       }else $('challan-detail-panel')?.scrollIntoView({behavior:'smooth',block:'start'});
-    }catch(error){window.alert(`Could not open invoice: ${error.name==='AbortError'?'Request timed out; please retry.':error.message}`);}
+    }catch(error){window.MYRAAUI.error(`Could not open invoice: ${error.name==='AbortError'?'Request timed out; please retry.':error.message}`);}
     finally{
       clearTimeout(timeout);openingInvoice=false;
       if(button?.isConnected){button.disabled=false;button.removeAttribute('aria-busy');}
@@ -346,13 +347,13 @@
       catch(err){notice($('challan-detail-msg'),err.message,true);}
     });
     host.querySelector('#challan-push')?.addEventListener('click',async()=>{
-      if(!window.confirm(`Push ${selected.ordered} pieces from ${selected.party_name} · ${selected.challan_no} into inventory? This action cannot be repeated.`))return;
+      if(!await window.MYRAAUI.confirm(`Push ${selected.ordered} pieces from ${selected.party_name} · ${selected.challan_no} into inventory? This action cannot be repeated.`,{title:'Post inventory stock?',confirmText:'Post stock',variant:'warning'}))return;
       const btn=$('challan-push');btn.disabled=true;
-      try{const response=await send(`/api/purchase-challans/${selected.id}/push`,'POST',{});await loadChallans();window.myraaLoadCosting?.();window.alert(`${response.received_pieces} pieces posted to inventory.`);}
+      try{const response=await send(`/api/purchase-challans/${selected.id}/push`,'POST',{});await loadChallans();window.myraaLoadCosting?.();window.MYRAAUI.success(`${response.received_pieces} pieces posted to inventory.`);}
       catch(err){notice($('challan-detail-msg'),err.message,true);btn.disabled=false;}
     });
     host.querySelectorAll('[data-delete-attachment]').forEach(button=>button.addEventListener('click',async()=>{
-      if(!window.confirm('Remove this invoice scan? It will no longer be available.'))return;
+      if(!await window.MYRAAUI.confirm('Remove this invoice scan? It will no longer be available.',{title:'Remove invoice scan?',confirmText:'Remove scan',variant:'danger'}))return;
       try {await json(`/api/purchase-challans/${selected.id}/attachments/${button.dataset.deleteAttachment}`,{method:'DELETE'});
         selected=await json(`/api/purchase-challans/${selected.id}`);renderChallan();}
       catch(err){notice($('challan-detail-msg'),err.message,true);}

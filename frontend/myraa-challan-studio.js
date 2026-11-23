@@ -8,7 +8,7 @@ const money=n=>'₹'+Number(n||0).toLocaleString('en-IN',{maximumFractionDigits:
 const row=()=>({name:'',sku:'',size:'',qty_ordered:'',qty_received:0,unit_cost:null});
 const dateToday=()=>new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
 const state={id:null,status:'NEW',mode:'edit',invoice_no:'',rows:[],files:[],attachments:[],busy:false};
-const msg=(text,bad=false)=>{const el=$('cs-message');el.textContent=text||'';el.classList.toggle('is-error',bad);};
+const msg=(text,bad=false)=>{const el=$('cs-message');el.textContent=text||'';el.classList.toggle('is-error',bad);if(bad&&text)window.MYRAAUI.error(text);};
 const api=async(url,options={})=>{
  const response=await fetch('/api/purchase-challans'+url,{credentials:'same-origin',...options});
  const data=await response.json().catch(()=>({}));
@@ -29,7 +29,7 @@ function render(){
     if(state.busy||!editable())return;
     const savedLine=state.rows[i];
     if(state.id && savedLine?.id){
-      if(!confirm('Permanently delete this saved invoice item? Unsaved changes to other rows will be discarded.'))return;
+      if(!await window.MYRAAUI.confirm('Permanently delete this saved invoice item? Unsaved changes to other rows will be discarded.',{title:'Delete saved item?',confirmText:'Delete item',variant:'danger'}))return;
       state.busy=true;calc();
       try {
         const updated=await api(`/${state.id}/lines/${savedLine.id}`,{method:'DELETE'});
@@ -80,7 +80,7 @@ function renderFiles(){
    close.addEventListener('click',async()=>{
     try {
      if(item.file){URL.revokeObjectURL(item.url);state.files.splice(item.pending,1);}
-     else {if(!confirm('Delete this saved invoice scan?'))return;const response=await fetch(`/api/purchase-challans/${state.id}/attachments/${item.id}`,{method:'DELETE',credentials:'same-origin'});if(!response.ok)throw new Error('Could not delete invoice scan');state.attachments=state.attachments.filter(x=>x.id!==item.id);}
+     else {if(!await window.MYRAAUI.confirm('Delete this saved invoice scan?',{title:'Remove invoice scan?',confirmText:'Remove scan',variant:'danger'}))return;const response=await fetch(`/api/purchase-challans/${state.id}/attachments/${item.id}`,{method:'DELETE',credentials:'same-origin'});if(!response.ok)throw new Error('Could not delete invoice scan');state.attachments=state.attachments.filter(x=>x.id!==item.id);}
      renderFiles();
     }catch(e){msg(e.message,true);}
    });div.append(close);
@@ -137,10 +137,10 @@ $('cs-last-open').addEventListener('click',()=>{
  const id=Number($('cs-last-open').dataset.invoiceId);
  if(id>0)window.myraaOpenChallan?.(id,'edit');
 });
-$('cs-new').addEventListener('click',()=>{if(confirm('Start a new invoice? Unsaved changes will be lost.'))reset();});
+$('cs-new').addEventListener('click',async()=>{if(await window.MYRAAUI.confirm('Start a new invoice? Unsaved changes will be lost.',{title:'Start new invoice?',confirmText:'Start new',variant:'warning'}))reset();});
 $('cs-add').addEventListener('click',()=>{if(!editable())return;if(state.rows.length>=300){msg('Max 300 items.',true);return;}state.rows.push(row());render();$('cs-rows').lastElementChild?.querySelector('.cs-name')?.focus();});
 $('cs-files').addEventListener('change',e=>{const files=Array.from(e.target.files||[]);if(files.length+state.attachments.length+state.files.length>12){msg('Maximum 12 invoice attachments are allowed.',true);return;}for(const file of files){if(file.size>10*1024*1024||!['image/jpeg','image/png','image/webp','application/pdf'].includes(file.type)){msg('PDF/JPG/PNG/WEBP up to 10 MB.',true);continue;}state.files.push({file,url:URL.createObjectURL(file)});}renderFiles();e.target.value='';});
-$('cs-push').addEventListener('click',async()=>{if(state.busy||$('cs-push').disabled)return;try{const saved=await save({stayOpen:true});if(!saved||saved.status!=='READY')return;if(!confirm('Add all received products to inventory? Each invoice can be posted only once.'))return;state.busy=true;calc();const result=await api(`/${saved.id}/push`,{method:'POST'});select(await api(`/${saved.id}`));window.myraaLoadChallans?.();window.myraaLoadCosting?.();msg(`Success: ${result.received_pieces||saved.received} pieces added to inventory.`);/* Sound is handled once by the successful CRUD request. */}catch(e){msg(e.message,true);window.myraaSound?.error?.();}finally{state.busy=false;calc();}});
+$('cs-push').addEventListener('click',async()=>{if(state.busy||$('cs-push').disabled)return;try{const saved=await save({stayOpen:true});if(!saved||saved.status!=='READY')return;if(!await window.MYRAAUI.confirm('Add all received products to inventory? Each invoice can be posted only once.',{title:'Post received stock?',confirmText:'Post stock',variant:'warning'}))return;state.busy=true;calc();const result=await api(`/${saved.id}/push`,{method:'POST'});select(await api(`/${saved.id}`));window.myraaLoadChallans?.();window.myraaLoadCosting?.();msg(`Success: ${result.received_pieces||saved.received} pieces added to inventory.`);/* Sound is handled once by the successful CRUD request. */}catch(e){msg(e.message,true);window.myraaSound?.error?.();}finally{state.busy=false;calc();}});
 $('cs-date').value=dateToday();
 window.myraaChallanStudio={onSelected:select,newChallan:reset};
 reset();

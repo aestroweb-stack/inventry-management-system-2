@@ -151,16 +151,9 @@ async function apiPatch(url, body) {
 }
 
 // ---------------- Toast ----------------
-let toastTimer;
-function showToast(message, type = "success", duration = 1400) {
-  // Backward compatible: showToast("msg", true)
-  if (type === true) type = "error";
-  const el = $("toast");
-  el.textContent = message;
-  el.className = `toast ${type}`;
-  el.hidden = false;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { el.hidden = true; }, duration);
+function showToast(message, type = "success", duration = undefined) {
+  // Backward compatible: showToast("msg", true), showToast("msg", "alert").
+  window.MYRAAUI.notify(message, {type: type === true ? 'error' : type, ...(duration ? {duration:Math.max(duration, 2800)} : {})});
 }
 
 // ---------------- Success sound ----------------
@@ -200,15 +193,10 @@ function setAlertBadge(n) {
 }
 
 // ---------------- Confirm modal ----------------
-let confirmAction = null;
-$("confirm-cancel").addEventListener("click", () => { $("confirm-modal").hidden = true; });
-$("confirm-ok").addEventListener("click", async () => { $("confirm-modal").hidden = true; if (confirmAction) await confirmAction(); });
 function askConfirm(title, body, action, okLabel = "Delete") {
-  $("confirm-title").textContent = title;
-  $("confirm-body").textContent = body;
-  $("confirm-ok").textContent = okLabel;
-  confirmAction = action;
-  $("confirm-modal").hidden = false;
+  window.MYRAAUI.confirm(body, {title, confirmText:okLabel, variant:'danger'})
+    .then(accepted => { if (accepted) return action(); })
+    .catch(error => window.MYRAAUI.error(error.message || String(error)));
 }
 
 // ---------------- Nav: drawer + view switching ----------------
@@ -1645,7 +1633,7 @@ async function loadOrderHistory() {
 }
 
 async function deleteOrderBatch(uploadId, filename) {
-  if (!confirm(`Delete batch “${filename}” and all its order lines? This removes its pending reorder demand. If it was dispatched, ${"\n"}the dispatched quantity will be restored to inventory so you can correct the file and process it again.`)) return;
+  if (!await window.MYRAAUI.confirm(`Delete batch “${filename}” and all its order lines? This removes its pending reorder demand. If it was dispatched, ${"\n"}the dispatched quantity will be restored to inventory so you can correct the file and process it again.`, {title:'Delete order batch?', confirmText:'Delete batch', variant:'danger'})) return;
   try {
     const result = await apiDelete(`${API}/orders/${uploadId}`);
     if (lastProcessedOrderUploadId === uploadId) {
@@ -1853,7 +1841,7 @@ async function dispatchOrderBatch(uploadId, fromHistory = false, lineIds = null)
     ? `Dispatch the currently available stock for ${selectedIds.length} selected line(s)? Any unavailable quantity will remain pending.`
     : "Dispatch the counted stock currently available for this batch? Any unavailable quantity will remain pending.";
   if (!selectedIds?.length && selectedOnly) return;
-  if (!confirm(question)) return;
+  if (!await window.MYRAAUI.confirm(question, {title:'Confirm dispatch', confirmText:'Dispatch stock', variant:'warning'})) return;
   const batchCard = document.querySelector(`.order-batch[data-upload-id="${uploadId}"]`);
   const btn = fromHistory
     ? batchCard?.querySelector(selectedOnly ? ".dispatch-selected" : ".batch-dispatch")

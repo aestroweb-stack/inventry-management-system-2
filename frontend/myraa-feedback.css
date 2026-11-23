@@ -1,0 +1,67 @@
+/* MYRAA Feedback v1 — polished notices + consent dialogs, light and dark themes. */
+.myraa-notices {
+  position:fixed; z-index:3500; top:max(18px,env(safe-area-inset-top)); right:max(20px,env(safe-area-inset-right));
+  display:flex; flex-direction:column; align-items:flex-end; gap:12px; width:min(430px,calc(100vw - 36px));
+  pointer-events:none;
+}
+.myraa-notice {
+  --myraa-accent:#087f65; --myraa-tint:#e1f6ed;
+  display:flex; align-items:flex-start; gap:13px; width:100%; padding:17px 14px 17px 16px;
+  box-sizing:border-box; border:1px solid rgba(17,56,44,.11); border-left:4px solid var(--myraa-accent);
+  background:#fff; color:#142b24; box-shadow:0 18px 45px rgba(14,39,34,.16),0 3px 12px rgba(14,39,34,.07);
+  border-radius:17px; pointer-events:auto; overflow:hidden; position:relative;
+  animation:myraa-notice-arrive .27s cubic-bezier(.2,.75,.25,1) both;
+}
+.myraa-notice--error { --myraa-accent:#c63f47; --myraa-tint:#ffedf0; }
+.myraa-notice--warning { --myraa-accent:#b67b13; --myraa-tint:#fff4da; }
+.myraa-notice--info { --myraa-accent:#3873af; --myraa-tint:#eaf3ff; }
+.myraa-notice-icon {display:grid;place-items:center;flex:none;width:37px;height:37px;border-radius:12px;background:var(--myraa-tint);color:var(--myraa-accent)}
+.myraa-notice-text {min-width:0;flex:1;padding:1px 0}
+.myraa-notice-text strong {display:block;letter-spacing:-.015em;font-size:14.5px;line-height:1.35;font-weight:750}
+.myraa-notice-text p {margin:4px 0 0;color:#52655c;font-size:13px;line-height:1.52;overflow-wrap:anywhere;white-space:pre-line}
+.myraa-notice-dismiss {flex:none;display:grid;place-items:center;border:0;border-radius:9px;background:transparent;color:#6c7d73;cursor:pointer;width:30px;height:30px;}
+.myraa-notice-dismiss:hover {background:#f1f5f2;color:#18372b}
+.myraa-notice-dismiss:focus-visible,.myraa-confirm button:focus-visible {outline:3px solid #3c9e86;outline-offset:2px}
+.myraa-notice.is-leaving {animation:myraa-notice-leave .20s ease-in both}
+@keyframes myraa-notice-arrive {from{opacity:0;transform:translateX(22px) translateY(-8px) scale(.97)}to{opacity:1;transform:none}}
+@keyframes myraa-notice-leave {to{opacity:0;transform:translateX(15px) scale(.97)}}
+.myraa-dialog-layer {z-index:3600;position:fixed;inset:0;display:flex;justify-content:center;align-items:center;box-sizing:border-box;padding:18px;
+  background:rgba(10,30,26,.56);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);animation:myraa-dialog-fade .15s ease-out;}
+.myraa-confirm {--myraa-confirm-color:#075e4b;--myraa-confirm-tint:#e5f6ef;box-sizing:border-box;width:min(100%,460px);max-height:min(88dvh,760px);overflow:auto;
+  padding:28px;border:1px solid rgba(10,59,42,.12);border-radius:23px;color:#152c25;background:#fff;
+  box-shadow:0 24px 75px rgba(5,22,17,.27);animation:myraa-dialog-enter .22s cubic-bezier(.2,.85,.27,1)}
+.myraa-confirm--danger{--myraa-confirm-color:#bb3e44;--myraa-confirm-tint:#ffedef}
+.myraa-confirm--warning{--myraa-confirm-color:#a87519;--myraa-confirm-tint:#fff5de}
+.myraa-confirm-top{display:flex;align-items:center;gap:15px}
+.myraa-confirm-icon{flex:none;width:50px;height:50px;border-radius:16px;background:var(--myraa-confirm-tint);color:var(--myraa-confirm-color);display:grid;place-items:center}
+.myraa-confirm-icon svg{width:25px;height:25px}
+.myraa-confirm-eyebrow{font-size:10px;font-weight:850;letter-spacing:.12em;color:var(--myraa-confirm-color);text-transform:uppercase}
+.myraa-confirm h2{font-size:21px;font-weight:750;line-height:1.28;letter-spacing:-.035em;color:inherit;margin:5px 0 0}
+.myraa-confirm-body{white-space:pre-line;overflow-wrap:anywhere;font-size:14px;line-height:1.65;color:#50675c;margin:19px 0 26px}
+.myraa-confirm-actions{display:flex;justify-content:flex-end;gap:10px;align-items:center}
+.myraa-confirm button{min-height:44px;padding:10px 20px;border-radius:12px;cursor:pointer;font:inherit;font-weight:700;font-size:13px;transition:background .15s,transform .15s}
+.myraa-confirm button:active{transform:scale(.985)}
+.myraa-confirm-cancel{border:1px solid #d9e2dc;color:#28463a;background:#f7faf8}
+.myraa-confirm-cancel:hover{background:#ecf3ee}
+.myraa-confirm-accept{border:1px solid transparent;color:#fff;background:var(--myraa-confirm-color)}
+.myraa-confirm-accept:hover{filter:brightness(.94)}
+@keyframes myraa-dialog-fade{from{opacity:0}to{opacity:1}}
+@keyframes myraa-dialog-enter{from{opacity:0;transform:translateY(13px) scale(.98)}to{opacity:1;transform:none}}
+html[data-theme="dark"] .myraa-notice,body.dark-mode .myraa-notice,body.dark .myraa-notice {background:#192c28;color:#ecf9f2;border-color:rgba(220,248,232,.14);border-left-color:var(--myraa-accent)}
+html[data-theme="dark"] .myraa-notice-text p,body.dark-mode .myraa-notice-text p,body.dark .myraa-notice-text p{color:#bbcec5}
+html[data-theme="dark"] .myraa-notice-dismiss,body.dark-mode .myraa-notice-dismiss,body.dark .myraa-notice-dismiss{color:#cbdbd2}
+html[data-theme="dark"] .myraa-notice-dismiss:hover,body.dark-mode .myraa-notice-dismiss:hover,body.dark .myraa-notice-dismiss:hover{background:#29423a}
+html[data-theme="dark"] .myraa-confirm,body.dark-mode .myraa-confirm,body.dark .myraa-confirm{background:#172923;color:#f1fcf5;border-color:rgba(224,250,235,.16)}
+html[data-theme="dark"] .myraa-confirm-body,body.dark-mode .myraa-confirm-body,body.dark .myraa-confirm-body{color:#b8d0c3}
+html[data-theme="dark"] .myraa-confirm-cancel,body.dark-mode .myraa-confirm-cancel,body.dark .myraa-confirm-cancel{background:#243930;color:#effaf2;border-color:#456056}
+@media(max-width:600px){
+ .myraa-notices{top:auto;right:12px;left:12px;bottom:max(16px,env(safe-area-inset-bottom));width:auto;align-items:stretch;gap:8px}
+ .myraa-notice{padding:13px 12px;border-radius:14px}
+ .myraa-dialog-layer{align-items:flex-end;padding:0}
+ .myraa-confirm{width:100%;max-height:88dvh;border-radius:23px 23px 0 0;padding:24px 20px max(25px,env(safe-area-inset-bottom));}
+ .myraa-confirm-actions{display:grid;grid-template-columns:1fr 1fr}
+ .myraa-confirm button{padding:12px 8px}
+}
+@media(prefers-reduced-motion:reduce){.myraa-notice,.myraa-notice.is-leaving,.myraa-dialog-layer,.myraa-confirm{animation:none!important}.myraa-confirm button{transition:none}}
+
+body.myraa-dialog-open{overflow:hidden}

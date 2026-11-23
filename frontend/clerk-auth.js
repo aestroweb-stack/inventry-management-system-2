@@ -301,7 +301,7 @@
   }
   function installProfileAndTeam() {
     $('logout-button')?.addEventListener('click',e=>{e.preventDefault();signOut().catch(err=>statusLine(err.message));});
-    $('workspace-profile-logout')?.addEventListener('click',()=>signOut().catch(err=>alert(err.message)));
+    $('workspace-profile-logout')?.addEventListener('click',()=>signOut().catch(err=>window.MYRAAUI.error(err.message)));
     async function openSellerProfile(){
       document.querySelector('.rail-link[data-view="profile"]')?.click();
       try {showProfile(await request('/api/workspace-auth/me'));}catch(e){statusLine(e.message);}
