@@ -41,11 +41,11 @@ def test_unknown_conflicting_size_and_brand_review(session):
     assert r['total_qty']==r['review_qty']==9 and r['matched_qty']==0 and r['review_count']==3
     assert len(r['items'])==0
 
-def test_fallback_and_explicit_prefix(session):
+def test_fallback_and_legacy_prefix_ignored(session):
     files=[('file.csv',b'SKU,Qty\nMAIN_V_DRESS_S,2\n')]
     assert s.consolidate(session,files,GROUP,'2026-11-25','BETA')['matched_qty']==2
     assert s.consolidate(session,files,GROUP,'2026-11-25')['review_qty']==2
-    assert s.consolidate(session,files,{**GROUP,'master_prefix':'OTHER'},'2026-11-25','BETA')['review_qty']==2
+    assert s.consolidate(session,files,{**GROUP,'master_prefix':'OTHER'},'2026-11-25','BETA')['matched_qty']==2
 
 @pytest.mark.parametrize('qty',['2.5','0','-1','NaN','Infinity'])
 def test_invalid_qty(session,qty):
@@ -121,3 +121,57 @@ def test_seller_database_isolation_and_restart(monkeypatch,tmp_path):
     with database.tenant_scope(1001):
         with database.SessionLocal() as db: assert db.query(BrandGroup).one().name=='Seller A'
     for engine in database._tenant_engines.values(): engine.dispose()
+
+
+def test_r8_multiple_groups_single_brand_alias_and_explicit_edit(session):
+    app=FastAPI();app.include_router(router);app.dependency_overrides[get_db]=lambda:session
+    with TestClient(app) as c:
+        b='/api/packing-sync/groups'
+        a=c.post(b,json={'name':'MODA RAPIDO','children':['MODA RAPIDO | MODA','HERE&NOW | H&N','SZN']}).json()
+        d=c.post(b,json={'name':'TWINS LADY'}).json()
+        e=c.post(b,json={'name':'Another','children':['SNGR']}).json()
+        assert len({a['id'],d['id'],e['id']})==3
+        assert d['children']==['TWINS LADY']
+        assert len(c.get(b).json())==3
+        assert c.put(b+'/'+str(d['id']),json={'name':'TWINS LADY','children':['TWINS LADY | TL']}).status_code==200
+        assert next(x for x in c.get(b).json() if x['id']==a['id'])==a
+        assert c.post(b,json={'name':'MODA RAPIDO'}).status_code==409
+        assert c.post(b,json={'name':'Conflict','children':['A | X','B | X']}).status_code==422
+        assert c.delete(b+'/'+str(e['id'])).status_code==200
+        assert {x['id'] for x in c.get(b).json()}=={a['id'],d['id']}
+        f=c.post(b,json={'name':'Fourth'}).json();assert f['id'] not in (a['id'],d['id'],e['id'])
+
+
+def test_r8_marketplace_partition_same_sku_and_arbitrary_platform(session):
+    group={**GROUP,'children':['Alpha full name | ALPHA','Beta full name | BETA']}
+    files=[('mixed.csv',b'SKU,Qty,Brand,Marketplace,Size\nALPHA_DRESS_S,2,ALPHA,Myntra,S\nBETA_STYLE_S,3,BETA,MYNTRA,S\nALPHA_DRESS_S,4,ALPHA,Flipkart,S\nALPHA_DRESS_S,7,ALPHA,New Shop,S\nTOTAL,99,,,\n')]
+    r=s.consolidate(session,files,group,'2026-11-25')
+    assert r['matched_qty']==16 and r['skipped_rows']==1
+    assert {x['marketplace']:x['qty'] for x in r['items']}=={'MYNTRA':5,'FLIPKART':4,'NEW SHOP':7}
+    ws=load_workbook(BytesIO(s.workbook_bytes(r))).active
+    assert [ws.cell(1,col).value for col in (1,4,7)]==['FLIPKART','MYNTRA','NEW SHOP']
+    assert all(ws.cell(row,col).value is None for row in range(1,3) for col in (3,6))
+    assert [ws.cell(2,col).value for col in (2,5,8)]==[4,5,7]
+    assert ws['A2'].font.sz==22 and ws['A2'].font.bold and ws.row_dimensions[2].height==38
+
+
+def test_r8_marketplace_alias_inference_and_file_fallback(session):
+    alias=session.query(business_models.MarketplaceSkuAlias).one();alias.marketplace='Novel platform';session.commit()
+    r=s.consolidate(session,[('a.csv',b'SKU,Qty,Brand\nBETA_STYLE_S,2,BETA\n')],GROUP,'2026-11-25')
+    assert r['items'][0]['marketplace']=='NOVEL PLATFORM'
+    files=[('a.csv',b'SKU,Qty,Brand\nALPHA_DRESS_S,2,ALPHA\n'),('b.csv',b'SKU,Qty,Brand\nALPHA_DRESS_S,3,ALPHA\n')]
+    r=s.consolidate(session,files,GROUP,'2026-11-25',file_marketplaces=['Myntra','Flipkart'])
+    assert len(r['items'])==2 and r['matched_qty']==5
+    r=s.consolidate(session,files,GROUP,'2026-11-25');assert len(r['items'])==2 and all(x['marketplace'].startswith('UNSPECIFIED FILE') for x in r['items'])
+    r=s.consolidate(session,[('a.csv',b'SKU,Qty,Brand,Marketplace\nALPHA_DRESS_S,2,ALPHA,Myntra\n')],GROUP,'2026-11-25',file_marketplaces=['Flipkart'])
+    assert r['review_qty']==2 and 'conflicts' in r['audit'][0]['issue']
+
+
+def test_r8_marketplace_block_40_rows_and_party_number():
+    assert s.master_party('MODA_123_DESIGN_BLUE')==('123','')
+    assert s.master_party('H&N_V_STYLE_BLACK')==('V','')
+    items=[{**x,'marketplace':'MYNTRA'} for x in make_items('V',40)]+[{**x,'marketplace':'FLIPKART'} for x in make_items('LP',2)]
+    ws=load_workbook(BytesIO(s.workbook_bytes({'group':GROUP,'items':items,'audit':[],'include_audit':False}))).active
+    assert ws.max_row==40
+    assert [ws.cell(1,col).value for col in (1,4,7)]==['FLIPKART','MYNTRA','MYNTRA']
+    assert sum(c.value for row in ws for c in row if isinstance(c.value,int))==42
