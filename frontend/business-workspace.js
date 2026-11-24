@@ -282,8 +282,14 @@
       if(version!==reportVersion)return;
       const d=period.today,pcs=n=>Number(n).toLocaleString('en-IN')+' pcs';
       $('cs-ordered').textContent=pcs(d.ordered_pieces);$('cs-received').textContent=pcs(d.received_pieces);$('cs-pending').textContent=pcs(d.pending_pieces);$('cs-value').textContent=money(d.ordered_value);
-      const tile=(label,t)=>`<article class="myraa-period-tile"><small>${label} · ${t.invoice_count} invoices</small><strong>${pcs(t.ordered_pieces)} · ${money(t.ordered_value)}</strong><span>Received ${pcs(t.received_pieces)} · Pending ${pcs(t.pending_pieces)} · Received cost ${money(t.received_value)}</span>${t.unpriced_pieces?`<small>${t.unpriced_pieces} pcs without a cost</small>`:''}</article>`;
-      host.innerHTML=tile('Selected day '+E(chosen),d)+tile('Selected month',period.month)+tile('All time',period.all_time);
+      const dateLabel = new Date(chosen+'T12:00:00').toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});
+      const monthLabel = new Date(chosen+'T12:00:00').toLocaleDateString('en-IN',{month:'long',year:'numeric'});
+      const tile=(kind,label,range,icon,t)=>`<article class="myraa-period-tile myraa-period-${kind}">
+        <header class="myraa-period-card-head"><span class="myraa-period-icon" aria-hidden="true"><i class="fa-solid ${icon}"></i></span><div class="myraa-period-heading"><h3>${label}</h3><small>${E(range)}</small></div><span class="myraa-period-count">${Number(t.invoice_count).toLocaleString('en-IN')} ${Number(t.invoice_count)===1?'invoice':'invoices'}</span></header>
+        <div class="myraa-period-metrics"><div><small>Ordered pieces</small><strong>${pcs(t.ordered_pieces)}</strong></div><div><small>Ordered value</small><strong>${money(t.ordered_value)}</strong></div></div>
+        <dl class="myraa-period-details"><div><dt>Received</dt><dd>${pcs(t.received_pieces)}</dd></div><div><dt>Pending</dt><dd>${pcs(t.pending_pieces)}</dd></div><div><dt>Received cost</dt><dd>${money(t.received_value)}</dd></div></dl>
+        ${t.unpriced_pieces?`<p class="myraa-period-unpriced">${pcs(t.unpriced_pieces)} without cost · value is partial</p>`:''}</article>`;
+      host.innerHTML=tile('day','Selected day',dateLabel,'fa-calendar-day',d)+tile('month','Selected month',monthLabel,'fa-calendar-days',period.month)+tile('all','All time','All saved invoices','fa-chart-line',period.all_time);
       if(status)status.textContent='Saved invoices · including posted';
     }catch(err){if(version!==reportVersion)return;if(status)status.textContent='Report unavailable: '+err.message;for(const id of ['cs-ordered','cs-received','cs-pending','cs-value'])$(id).textContent='—';host.textContent='Could not load purchase totals.';}
   }
