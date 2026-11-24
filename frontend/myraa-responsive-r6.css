@@ -1,0 +1,102 @@
+/* R6: final responsive layer. Preserve desktop layout and R4/R5 components. */
+html {max-width:100%;overflow-x:clip;}
+body {max-width:100%;overflow-x:clip;}
+#shell,#stage,#stage>.view {min-width:0;max-width:100%;}
+#stage {flex:1 1 0;}
+#stage .panel,#stage .table-wrap,#stage .challan-batches,#stage .invoice-records-scroll,#stage .business-design-table-wrap,#stage .cs-table-wrap {min-width:0;max-width:100%;}
+#stage .table-wrap,#stage .invoice-records-scroll,#stage .business-design-table-wrap,#stage .cs-table-wrap {overscroll-behavior-x:contain;}
+#stage :where(input,select,textarea) {min-width:0;max-width:100%;}
+#stage :where(.view-head,.filter-bar,.dashboard-analytics-grid,.dashboard-inventory-title,.challan-search-row,.challan-list-heading,.business-cost-designs-head)>* {min-width:0;max-width:100%;}
+#stage :where(.sku-tag,.name-cell,.hint,.sub,.business-design-table code) {overflow-wrap:anywhere;}
+.myraa-owner-footer {max-width:100%;overflow-wrap:anywhere;}
+/* Pagination stays a compact, centered row. Count gets its natural width. */
+#stage :is(.pager,.business-design-pagination,.myraa-pagination,.packing-pagination):not([hidden]) {
+ display:flex!important;align-items:center!important;justify-content:center!important;flex-wrap:wrap!important;gap:8px!important;min-width:0;max-width:100%;
+}
+#stage :is(.pager,.business-design-pagination,.myraa-pagination,.packing-pagination)>button {
+ flex:0 0 auto!important;width:auto!important;min-width:0!important;max-width:100%;min-height:40px!important;height:auto!important;padding:8px 12px!important;font-size:12px!important;line-height:1.3!important;white-space:nowrap!important;
+}
+#stage :is(.pager,.business-design-pagination,.myraa-pagination,.packing-pagination)>span {
+ flex:0 1 auto!important;min-width:0!important;max-width:100%;width:auto!important;text-align:center;white-space:normal!important;overflow-wrap:anywhere;font-size:12px;line-height:1.4;
+}
+#stage :is(.pager,.business-design-pagination,.myraa-pagination,.packing-pagination)[hidden] {display:none!important;}
+/* Drawer must overlay both mobile toolbars, including when desktop collapse was saved. */
+@media(max-width:1023px){
+ #shell {display:flex;flex-direction:column;width:100%;}
+ #stage {flex:1 1 auto;width:100%;padding:0 clamp(10px,3.2vw,24px) 44px!important;overflow-x:clip!important;}
+ #shell>.topbar {position:sticky;top:0;z-index:46!important;width:100%;min-width:0;height:auto;min-height:56px;padding: max(8px,env(safe-area-inset-top)) 10px 8px;gap:6px;}
+ #shell>.topbar .topbar-title {flex:1 1 auto;min-width:0;gap:5px;font-size:clamp(17px,4.5vw,23px);white-space:nowrap;}
+ #shell>.topbar .topbar-title img {width:25px;height:25px;flex:none;}
+ #shell>.topbar .icon-btn {flex:0 0 40px;min-width:40px;width:40px;height:40px;padding:0;}
+ #shell>.topbar .theme-toggle {margin-left:0;}
+ #stage>.workspace-topbar {position:relative!important;top:auto!important;z-index:45!important;margin:0 0 16px!important;padding:8px!important;min-height:60px;grid-template-columns:minmax(0,1fr) max-content!important;column-gap:8px!important;border-radius:0 0 12px 12px!important;}
+ #stage .workspace-topbar .workspace-global-search {min-width:0!important;max-width:100%;width:100%;}
+ #stage .workspace-topbar .workspace-global-search input {min-width:0;width:100%;}
+ #stage .workspace-topbar .workspace-theme-switch {display:none!important;}
+ #nav-backdrop:not([hidden]) {display:block!important;z-index:51!important;touch-action:none;}
+ #shell #sidebar {position:fixed!important;inset:0 auto 0 0!important;z-index:52!important;transform:translateX(-105%);width:min(340px,88vw)!important;max-width:100%;height:100vh!important;height:100dvh!important;max-height:100dvh!important;min-height:0!important;overflow:hidden!important;display:flex!important;flex-direction:column;padding: max(12px,env(safe-area-inset-top)) 12px max(12px,env(safe-area-inset-bottom))!important;visibility:hidden;}
+ #shell #sidebar.is-open {transform:translateX(0);visibility:visible;}
+ #shell #sidebar .rail-identity {display:grid!important;grid-template-columns:42px minmax(0,1fr) 40px!important;grid-template-rows:auto!important;grid-template-areas:'brand-icon brand-name brand-toggle'!important;gap:8px!important;min-height:64px!important;padding:0 0 10px!important;margin:0 0 8px!important;align-items:center;justify-items:start;flex:0 0 auto;}
+ #shell #sidebar .rail-identity-mark {width:40px!important;height:40px!important;min-width:0!important;}
+ #shell #sidebar .rail-identity-name {display:flex!important;overflow:visible;min-width:0;}
+ #shell #sidebar .rail-identity-name strong {font-size:clamp(19px,5vw,26px);}
+ #shell #sidebar .rail-identity-name small {font-size:8px;overflow-wrap:anywhere;}
+ #shell #sidebar .rail-collapse {display:flex!important;position:static!important;inset:auto!important;transform:none!important;justify-self:end;width:40px;height:40px;min-width:40px;}
+ #shell #sidebar .rail-collapse .rail-chevron {transform:none!important;font-size:24px;}
+ #shell #sidebar .rail-nav {flex:1 1 0;min-height:0;overflow-y:auto!important;overflow-x:hidden;overscroll-behavior:contain;padding:3px 2px 8px!important;}
+ #shell #sidebar .rail-link {display:grid!important;grid-template-columns:22px minmax(0,1fr) auto!important;justify-content:initial!important;gap:10px!important;min-height:44px;flex:0 0 auto;padding:10px!important;}
+ #shell #sidebar .rail-link i {grid-column:1;grid-row:1;}
+ #shell #sidebar .rail-label {display:block!important;grid-column:2;grid-row:1;white-space:normal;overflow-wrap:anywhere;}
+ #shell #sidebar .rail-link .badge {position:static!important;grid-column:3;grid-row:1;}
+ #shell #sidebar .rail-foot {display:block!important;flex:0 0 auto;max-width:100%;padding:10px 4px 0!important;margin-top:8px;}
+ body.myraa-drawer-open {overflow:hidden!important;overscroll-behavior:none;}
+ #stage .view-head {gap:10px;}
+ #stage .view-head>div {max-width:100%;}
+}
+@media(max-width:560px){
+ #shell>.topbar .topbar-title small {display:none;}
+ #stage .workspace-top-actions #sound-toggle,#stage .workspace-top-actions #workspace-photo-search {display:none!important;}
+ #stage .workspace-topbar .workspace-global-search input {font-size:12px!important;}
+ #stage .challan-search-row {display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:9px!important;}
+ #stage .challan-search-row .field {min-width:0;width:100%;}
+ #stage .challan-search-row #challan-clear-filters {width:100%;min-height:40px;}
+}
+/* Read-only records are cards when available space is narrow. Header text is copied to each field by R6 JS.
+   The original rows and action buttons stay in the DOM; no extra API requests. */
+.myraa-record-scroll {container-type:inline-size;min-width:0;max-width:100%;}
+@container (max-width: 920px){
+ #stage table.myraa-record-table {display:block!important;width:100%!important;min-width:0!important;max-width:100%!important;border-collapse:separate!important;table-layout:auto!important;}
+ #stage table.myraa-record-table>thead {position:absolute!important;width:1px!important;height:1px!important;overflow:hidden!important;clip-path:inset(50%);white-space:nowrap;}
+ #stage table.myraa-record-table>thead:has(.order-select-cell) {position:static!important;width:100%!important;height:auto!important;overflow:visible!important;clip-path:none;display:block!important;white-space:normal;}
+ #stage table.myraa-record-table>thead:has(.order-select-cell)>tr {display:block!important;}
+ #stage table.myraa-record-table>thead:has(.order-select-cell) th:not(.order-select-cell) {display:none!important;}
+ #stage table.myraa-record-table>thead:has(.order-select-cell) th.order-select-cell {display:block!important;width:100%;text-align:left;padding:10px 14px;}
+ #stage table.myraa-record-table>tbody {display:grid!important;gap:10px;padding:10px;width:100%;min-width:0;}
+ #stage table.myraa-record-table>tbody>tr {display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px 12px;align-items:start;width:100%!important;min-width:0!important;padding:12px;background:var(--panel);border:1px solid var(--line);border-radius:12px;}
+ #stage table.myraa-record-table>tbody>tr>td {display:block!important;position:static!important;width:auto!important;min-width:0!important;max-width:100%!important;padding:0!important;border:0!important;text-align:left!important;white-space:normal!important;overflow:visible!important;overflow-wrap:anywhere!important;font-size:13px;line-height:1.45;}
+ #stage table.myraa-record-table>tbody>tr>td[data-myraa-label]::before {content:attr(data-myraa-label);display:block;color:var(--ink-soft);font-size:10px;font-weight:750;letter-spacing:.04em;text-transform:uppercase;margin-bottom:3px;line-height:1.35;}
+ #stage table.myraa-record-table>tbody>tr>td:is(.name-cell,[data-myraa-wide],.invoice-record-actions,[colspan]) {grid-column:1/-1;}
+ #stage table.myraa-record-table>tbody>tr>td[colspan] {text-align:center!important;padding:8px!important;}
+ #stage table.myraa-record-table>tbody>tr>td[colspan]::before {display:none;}
+ #stage table.myraa-record-table>tbody>tr>td.invoice-record-actions {display:flex!important;align-items:center;flex-wrap:wrap;gap:6px!important;padding-top:10px!important;border-top:1px solid var(--line)!important;}
+ #stage table.myraa-record-table>tbody>tr>td.invoice-record-actions::before {flex:0 0 100%;}
+ #stage table.myraa-record-table>tbody>tr>td.invoice-record-actions :is(button,a) {flex:0 1 auto!important;width:auto!important;min-width:0!important;max-width:100%;min-height:36px!important;height:auto!important;margin:0!important;padding:7px 9px!important;white-space:normal!important;}
+ #stage table.cs-table.myraa-record-table>tbody>tr>td.cs-product-cell {grid-column:1/-1;}
+ #stage table.cs-table.myraa-record-table>tbody>tr>td input {width:100%!important;min-width:0!important;max-width:100%;min-height:40px;}
+ #stage table.cs-table.myraa-record-table>tbody>tr>td.cs-product-cell input {text-align:left;}
+ #stage table.cs-table.myraa-record-table .cs-delete {min-height:40px;min-width:40px;}
+ #stage table.myraa-record-table>tbody>tr>td.order-select-cell {grid-column:1/-1;display:flex!important;align-items:center;gap:10px;}
+ #stage table.myraa-record-table>tbody>tr>td.order-select-cell::before {margin:0;}
+ #stage table.myraa-record-table>tbody>tr>td.col-img {grid-column:1/-1;display:flex!important;align-items:center;gap:10px;}
+ #stage table.myraa-record-table>tbody>tr>td.col-img:empty {display:none!important;}
+ #stage table.myraa-record-table .thumb {width:54px;height:66px;}
+ #stage table.myraa-record-table .status-pill {white-space:normal;max-width:100%;}
+ /* Wrapper remains a local scroll boundary on older browsers. */
+ #stage #challan-batches:has(.myraa-record-table) {overflow:visible!important;}
+}
+/* On very wide displays preserve the existing fluid layout, but keep text/forms readable. */
+@media(min-width:2000px){
+ #stage {padding-inline:clamp(38px,2vw,72px);}
+ #stage>.workspace-topbar {margin-inline:0!important;}
+ #stage>.view {width:100%;max-width:2600px;margin-inline:auto;}
+}

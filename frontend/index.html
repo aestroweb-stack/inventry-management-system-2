@@ -22,13 +22,14 @@
 <link rel="stylesheet" href="myraa-premium-nav.css?v=nov24-r4">
 <link rel="stylesheet" href="myraa-feedback.css?v=nov24-r4">
 <link rel="stylesheet" href="myraa-fixes.css?v=nov24-r5">
+<link rel="stylesheet" href="myraa-responsive-r6.css?v=nov25-r6">
 </head>
 <body>
 
 <div id="shell" class="shell">
   <!-- Mobile top bar -->
   <header class="topbar">
-    <button id="menu-toggle" class="icon-btn" aria-label="Menu"><i class="fa-solid fa-bars"></i></button>
+    <button id="menu-toggle" class="icon-btn" aria-label="Menu" aria-expanded="false" aria-controls="sidebar"><i class="fa-solid fa-bars"></i></button>
     <span class="topbar-title"><img src="assets/myraa-mark.svg" alt="" width="26" height="26"> MYRAA <small>Inventory</small></span>
     <button id="topbar-alerts" class="icon-btn" aria-label="Alerts">
       <i class="fa-solid fa-bell"></i><span id="alert-count-mobile" class="badge" hidden>0</span>
@@ -522,7 +523,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
 <script src="myraa-feedback.js?v=nov24-r4"></script>
 <script src="myraa-auth-gate.js?v=nov24-r4"></script>
-<script src="app.js?v=nov24-r4"></script>
+<script src="app.js?v=nov25-r6"></script>
 <script src="myraa-signature-v3.js?v=nov24-r4"></script>
 <script src="packing-picklist.js?v=nov24-r4"></script>
 <script src="business-workspace.js?v=nov24-r5"></script>
@@ -532,5 +533,6 @@
 <script src="clerk-auth.js?v=nov24-r4"></script>
 <script src="myraa-ui-refresh.js?v=nov24-r4"></script>
 <script src="myraa-premium-nav.js?v=nov24-r4"></script>
+<script src="myraa-responsive-r6.js?v=nov25-r6"></script>
 </body>
 </html>

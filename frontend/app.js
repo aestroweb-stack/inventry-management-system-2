@@ -187,14 +187,37 @@ function askConfirm(title, body, action, okLabel = "Delete") {
 }
 
 // ---------------- Nav: drawer + view switching ----------------
-function openDrawer() { $("sidebar").classList.add("is-open"); $("nav-backdrop").hidden = false; $("menu-toggle")?.setAttribute("aria-expanded", "true"); }
-function closeDrawer() { $("sidebar").classList.remove("is-open"); $("nav-backdrop").hidden = true; $("menu-toggle")?.setAttribute("aria-expanded", "false"); }
+const drawerViewport = window.matchMedia("(max-width: 1023px)");
+function openDrawer() {
+  if (!drawerViewport.matches) return;
+  $("sidebar").classList.add("is-open");
+  $("nav-backdrop").hidden = false;
+  document.body.classList.add("myraa-drawer-open");
+  $("stage").inert = true;
+  $("menu-toggle")?.setAttribute("aria-expanded", "true");
+  $("sidebar-collapse")?.setAttribute("aria-label", "Close menu");
+  $("sidebar-collapse")?.setAttribute("title", "Close menu");
+  $("sidebar-collapse")?.focus({preventScroll:true});
+}
+function closeDrawer() {
+  const wasOpen = $("sidebar").classList.contains("is-open");
+  $("sidebar").classList.remove("is-open");
+  $("nav-backdrop").hidden = true;
+  document.body.classList.remove("myraa-drawer-open");
+  $("stage").inert = false;
+  $("menu-toggle")?.setAttribute("aria-expanded", "false");
+  const collapsed = $("shell").classList.contains("sidebar-collapsed");
+  $("sidebar-collapse")?.setAttribute("aria-label", drawerViewport.matches ? "Close menu" : collapsed ? "Expand sidebar" : "Collapse sidebar");
+  $("sidebar-collapse")?.setAttribute("title", drawerViewport.matches ? "Close menu" : collapsed ? "Expand sidebar" : "Collapse sidebar");
+  if (wasOpen && drawerViewport.matches) $("menu-toggle")?.focus({preventScroll:true});
+}
+drawerViewport.addEventListener("change", closeDrawer);
 $("menu-toggle").addEventListener("click", () => {
   if ($("sidebar").classList.contains("is-open")) closeDrawer();
   else openDrawer();
 });
 $("sidebar-collapse").addEventListener("click", () => {
-  if (window.matchMedia("(max-width: 760px)").matches) { closeDrawer(); return; }
+  if (drawerViewport.matches) { closeDrawer(); return; }
   const collapsed = $("shell").classList.toggle("sidebar-collapsed");
   localStorage.setItem("sidebarCollapsed", String(collapsed));
   $("sidebar-collapse").setAttribute("aria-label", collapsed ? "Expand sidebar" : "Collapse sidebar");
@@ -212,7 +235,8 @@ document.querySelectorAll(".rail-link[data-view]").forEach((btn) => btn.addEvent
 
 const APP_VIEW_NAMES = new Set([...document.querySelectorAll(".view")].map((view) => view.id.replace(/^view-/, "")));
 function viewFromLocation() {
-  const requested = decodeURIComponent(window.location.hash.replace(/^#\/?/, "").split(/[?&]/, 1)[0] || "");
+  let requested = "";
+  try { requested = decodeURIComponent(window.location.hash.replace(/^#\/?/, "").split(/[?&]/, 1)[0] || ""); } catch { /* Invalid hash returns to dashboard. */ }
   return APP_VIEW_NAMES.has(requested) ? requested : "dashboard";
 }
 
@@ -2010,7 +2034,7 @@ async function loadHistory(reset) {
     const rows = page.items;
     const html = rows.map((t) => `
       <tr>
-        <td class="hide-sm" style="white-space:nowrap;">${new Date(t.created_at).toLocaleString()}</td>
+        <td style="white-space:nowrap;">${new Date(t.created_at).toLocaleString()}</td>
         <td class="sku-tag">${esc(t.sku)}</td>
         <td class="name-cell hide-sm" title="${esc(t.product_name)}">${esc(t.product_name)}</td>
         <td><span class="size-chip">${esc(t.size)}</span></td>
@@ -2020,7 +2044,7 @@ async function loadHistory(reset) {
         <td class="hide-sm hint">${esc(t.reference || "")}</td>
       </tr>`).join("");
     body.innerHTML = html || `<tr><td colspan="8" class="empty">No history yet.</td></tr>`;
-    $("hist-page-info").textContent = rows.length ? `${history.offset + 1}–${Math.min(history.offset + rows.length, page.total)} of ${page.total}` : "";
+    $("hist-page-info").textContent = rows.length ? `${history.offset + 1}–${Math.min(history.offset + rows.length, page.total)} of ${page.total}` : "0 of 0";
     $("hist-prev").disabled = history.offset === 0;
     $("hist-next").disabled = history.offset + rows.length >= page.total;
   } catch (e) { if (reset) body.innerHTML = `<tr><td colspan="8" class="empty">Could not load history.</td></tr>`; }
@@ -2143,7 +2167,7 @@ async function loadTrash() {
 
 // ---------------- Init ----------------
 const initialView = viewFromLocation();
-if (!window.location.hash || !APP_VIEW_NAMES.has(decodeURIComponent(window.location.hash.replace(/^#\/?/, "").split(/[?&]/, 1)[0] || ""))) {
+if (!window.location.hash || !APP_VIEW_NAMES.has(window.location.hash.replace(/^#\/?/, "").split(/[?&]/, 1)[0] || "")) {
   window.history.replaceState({ view: initialView }, "", `#${encodeURIComponent(initialView)}`);
 }
 switchView(initialView, { updateUrl: false });
