@@ -11,7 +11,7 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
 <link rel="stylesheet" href="myraa-production.css?v=nov24-r4">
 <link rel="stylesheet" href="myraa-signature-v3.css?v=nov24-r4">
-  <link rel="stylesheet" href="packing-picklist.css?v=nov24-r4">
+  <link rel="stylesheet" href="packing-picklist.css?v=nov25-r7">
   <link rel="stylesheet" href="business-workspace.css?v=nov24-r4">
   <link rel="stylesheet" href="product-challan-pages.css?v=nov24-r4">
   <link rel="stylesheet" href="seller-workspace.css?v=nov24-r4">
@@ -321,49 +321,55 @@
       <div id="upload-result" style="margin-top:16px;"></div>
     </section>
 
-    <!-- ================= PACKING PICKLIST (READ ONLY) ================= -->
-    <section id="view-packing" class="view">
-      <header class="view-head">
-        <div><h1>Packing Picklist Generator</h1><p class="sub">Automatically group by seller/brand, party, product design and size. Same product and size quantities merge; each printed page has up to 40 rows.</p></div>
-      </header>
-      <div class="packing-notice"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> Packing picklists are for reference only. <strong>Inventory stock, imported orders, and dispatch records will not be changed.</strong></div>
-      <div class="packing-grid">
+    <!-- ================= PACKING PICKLIST / BRAND SYNC ================= -->
+    <section id="view-packing" class="view packing-sync">
+      <header class="view-head"><div><h1>Packing Picklist Generator</h1><p class="sub">Consolidate synced brands into registered Master SKUs, grouped by packing party.</p></div></header>
+      <div class="packing-notice"><i class="fa-solid fa-shield-halved"></i><div><strong>Brand groups &amp; sync.</strong> Select a Main Brand to combine its source brands. Stock and dispatch records are not changed.</div></div>
+      <section class="panel ps-brand-bar">
+        <label class="ps-field">Main Brand (Brand Group)<select id="ps-group" class="input"><option value="">Create a Main Brand first</option></select></label>
+        <div class="ps-field"><span>Synced source brands</span><div id="ps-chips" class="ps-chips"><span class="hint">No group selected</span></div></div>
+        <button type="button" id="ps-manage" class="btn-secondary"><i class="fa-solid fa-link"></i> Manage Brand Sync</button>
+      </section>
+      <section id="ps-manager" class="panel ps-manager" hidden>
+        <div class="ps-section-head"><div><h2>Manage Brand Sync</h2><p class="hint">Create multiple independent Main Brands and edit their source brand names.</p></div><button id="ps-new" class="btn-secondary" type="button">+ New Main Brand</button></div>
+        <form id="ps-group-form" class="ps-form">
+          <label class="ps-field">Main Brand name<input id="ps-name" class="input" maxlength="100" required placeholder="e.g. MYRAA Apparel"></label>
+          <label class="ps-field">Master SKU brand prefix (optional)<input id="ps-prefix" class="input" maxlength="100" placeholder="e.g. MYRAA"></label>
+          <label class="ps-field ps-span">Source brands (one per line or comma-separated)<textarea id="ps-children" class="input" rows="3" required placeholder="Brand A, Brand B, Brand C"></textarea></label>
+          <p class="hint ps-span">Master format: BRAND_PARTY_DESIGN + registered size. Example: MYRAA_V_DRESS01_S. Prefix is optional; party is always read from the registered master, not the source brand.</p>
+          <div class="ps-actions ps-span"><button type="submit" class="btn-primary" id="ps-group-save">Save Brand Group</button><button type="button" class="btn-secondary ps-danger" id="ps-group-delete" hidden>Delete Group</button><button type="button" class="btn-secondary" id="ps-manager-close">Close</button></div>
+        </form>
+      </section>
+      <div class="packing-grid ps-top-grid">
         <section class="panel packing-upload">
-          <h2><i class="fa-solid fa-file-excel"></i> 1 · Upload original picklist</h2>
-          <label for="packing-file" class="packing-drop">
-            <i class="fa-solid fa-cloud-arrow-up" aria-hidden="true"></i>
-            <strong>Choose Excel / CSV file</strong>
-            <span id="packing-filename">.xlsx, .xls, .csv · Master SKU and Qty</span>
-            <input type="file" accept=".xlsx,.xls,.csv" id="packing-file" hidden>
-          </label>
-          <div class="packing-options">
-            <label>Picklist date <input id="packing-date" class="input" type="date" aria-label="Picklist date"></label>
+          <h2><i class="fa-solid fa-file-excel"></i> 1 · Upload order files</h2>
+          <label for="packing-file" class="packing-drop"><i class="fa-solid fa-cloud-arrow-up"></i><strong>Choose Excel / CSV files</strong><span id="packing-filename">.xlsx, .xls, .csv · SKU and Qty · Up to 12 MB combined</span><input type="file" multiple accept=".xlsx,.xls,.csv" id="packing-file" hidden></label>
+          <div class="ps-form ps-options">
+            <label class="ps-field">Picklist date<input id="packing-date" class="input" type="date" required></label>
+            <label class="ps-field">Fallback source brand<select id="ps-fallback" class="input"><option value="">Auto · Brand column / SKU prefix</option></select></label>
           </div>
-          <label class="packing-check"><input id="packing-audit" type="checkbox"> Include Review and Source Audit sheets (optional)</label>
-          <p class="hint">The import identifies brand, supplier, product, optional color, and size. Quantities for the same product and size are grouped. Printouts use a black-and-white layout. Ambiguous SKUs are listed in the Review and Audit sheets.</p>
-          <div class="packing-actions"><button id="packing-preview" class="btn-secondary" type="button" disabled><i class="fa-solid fa-eye"></i> Check & Preview</button><button id="packing-export" class="btn-primary" type="button" disabled><i class="fa-solid fa-file-arrow-down"></i> Download Excel</button></div>
-          <p id="packing-status" class="hint" role="status" aria-live="polite">Upload a file to begin.</p>
+          <label class="packing-check"><input id="packing-audit" type="checkbox"> Include Source Audit sheet (optional)</label>
+          <p class="hint">If a file has no brand column or recognized prefix, choose its source brand here. Total and subtotal rows are ignored. Processing automatically saves a dated snapshot.</p>
         </section>
         <section class="panel packing-results" aria-live="polite">
-          <h2><i class="fa-solid fa-layer-group"></i> 2 · Verified totals</h2>
-          <div class="packing-stats">
-            <div><span>Source lines</span><strong id="packing-source-count">—</strong></div>
-            <div><span>Total pieces</span><strong id="packing-total">—</strong></div>
-            <div><span>Merged lines</span><strong id="packing-merged">—</strong></div>
-            <div><span>Review rows</span><strong id="packing-review-count">—</strong></div>
+          <div class="ps-section-head"><h2><i class="fa-solid fa-layer-group"></i> 2 · Process &amp; Save</h2><div class="ps-actions"><button id="packing-preview" class="btn-primary" type="button" disabled><i class="fa-solid fa-play"></i> Process &amp; Save</button><button id="packing-export" class="btn-secondary" type="button" disabled><i class="fa-solid fa-file-arrow-down"></i> Excel</button></div></div>
+          <div class="packing-stats ps-stats">
+            <div class="ps-kpi ps-green"><i class="fa-solid fa-layer-group"></i><span>Source rows</span><strong id="packing-source-count">—</strong></div>
+            <div class="ps-kpi ps-blue"><i class="fa-solid fa-cube"></i><span>Total pieces</span><strong id="packing-total">—</strong></div>
+            <div class="ps-kpi ps-purple"><i class="fa-solid fa-circle-check"></i><span>Matched pieces</span><strong id="packing-matched">—</strong></div>
+            <div class="ps-kpi ps-amber"><i class="fa-solid fa-triangle-exclamation"></i><span>Review rows</span><strong id="packing-review-count">—</strong></div>
           </div>
-          <div id="packing-party-list" class="packing-party-list"><p class="hint">Party-wise totals yahan dikhenge.</p></div>
+          <p id="packing-status" class="hint" role="status" aria-live="polite">Create or select a Main Brand to start.</p>
+          <p id="ps-reconcile" class="ps-reconcile" hidden></p>
         </section>
       </div>
       <section class="panel packing-sample-panel">
-        <div class="packing-sample-head"><h2>Normalized SKU preview</h2><span id="packing-preview-total">Full merged list · 25 per page</span></div>
-        <div class="table-wrap"><table class="grid"><thead><tr><th>Brand</th><th>Party</th><th>Picklist SKU</th><th class="num">Qty</th></tr></thead><tbody id="packing-sample"><tr><td colspan="4" class="empty">Upload a file to preview consolidation</td></tr></tbody></table></div>
-        <div class="packing-pagination" id="packing-pagination" hidden>
-          <button class="btn-secondary" type="button" id="packing-prev">← Previous</button>
-          <span id="packing-page-info" aria-live="polite">Page 1 of 1</span>
-          <button class="btn-secondary" type="button" id="packing-next">Next →</button>
-        </div>
+        <div class="ps-section-head"><h2><i class="fa-solid fa-list-check"></i> SKU Matching Review</h2><div class="ps-filters"><select id="ps-match-status" class="input" aria-label="Match status"><option value="all">All rows</option><option value="matched">Matched</option><option value="review">Needs review</option></select><select id="ps-match-brand" class="input" aria-label="Source brand"><option value="">All source brands</option></select><input id="ps-match-q" class="input" placeholder="Search SKU or product…" aria-label="Search matching review"></div></div>
+        <div class="table-wrap"><table class="grid"><thead><tr><th>Source brand</th><th>Source SKU</th><th>Product name</th><th>Master SKU</th><th>Party</th><th>Qty</th><th>Status</th></tr></thead><tbody id="packing-sample"><tr><td colspan="7" class="empty">Process a file to review SKU matching.</td></tr></tbody></table></div>
+        <div class="packing-pagination" id="packing-pagination" hidden><button class="btn-secondary" type="button" id="packing-prev">← Previous</button><span id="packing-page-info"></span><button class="btn-secondary" type="button" id="packing-next">Next →</button></div>
       </section>
+      <section class="panel packing-sample-panel"><div class="ps-section-head"><div><h2><i class="fa-solid fa-users"></i> Party-wise Packing Preview</h2><p class="hint">Merged across source brands by exact Master SKU + size. No total row in packing Excel.</p></div><span id="ps-merged-info" class="hint"></span></div><div id="packing-party-list" class="ps-party-grid"><p class="hint">Matched party totals will appear here.</p></div><div class="ps-section-head ps-party-filter"><label class="ps-field">Search merged packing items<input id="ps-party-q" class="input" placeholder="Party, Master SKU or product…"></label></div><div class="table-wrap"><table class="grid"><thead><tr><th>Party</th><th>Master SKU + Size</th><th>Product</th><th>Source brands</th><th>Qty</th></tr></thead><tbody id="ps-party-items"><tr><td colspan="5" class="empty">No processed items yet.</td></tr></tbody></table></div><div class="packing-pagination" id="ps-party-pagination" hidden><button class="btn-secondary" type="button" id="ps-party-prev">← Previous</button><span id="ps-party-page"></span><button class="btn-secondary" type="button" id="ps-party-next">Next →</button></div></section>
+      <section class="panel packing-sample-panel"><div class="ps-section-head"><div><h2><i class="fa-solid fa-clock-rotate-left"></i> Saved Picklist History</h2><p class="hint">Saved on your server. Reopen or download the exact saved Excel later.</p></div><div class="ps-filters"><input id="ps-history-date" type="date" class="input" aria-label="Filter picklist date"><select id="ps-history-group" class="input" aria-label="Filter main brand"><option value="">All Main Brands</option></select><button class="btn-secondary" id="ps-history-clear" type="button">Clear</button></div></div><div class="table-wrap"><table class="grid"><thead><tr><th>Picklist date</th><th>Main Brand</th><th>Synced source brands</th><th>Quantities</th><th>Actions</th></tr></thead><tbody id="ps-history"><tr><td colspan="5" class="empty">No saved picklists yet.</td></tr></tbody></table></div><div class="packing-pagination" id="ps-history-pagination" hidden><button class="btn-secondary" type="button" id="ps-history-prev">← Previous</button><span id="ps-history-page"></span><button class="btn-secondary" type="button" id="ps-history-next">Next →</button></div></section>
     </section>
 
     <!-- ================= REORDER LIST ================= -->
@@ -525,7 +531,7 @@
 <script src="myraa-auth-gate.js?v=nov24-r4"></script>
 <script src="app.js?v=nov25-r6"></script>
 <script src="myraa-signature-v3.js?v=nov24-r4"></script>
-<script src="packing-picklist.js?v=nov24-r4"></script>
+<script src="packing-picklist.js?v=nov25-r7"></script>
 <script src="business-workspace.js?v=nov24-r5"></script>
 <script src="product-challan-pages.js?v=nov24-r4"></script>
 <script src="myraa-challan-studio.js?v=nov24-r4"></script>

@@ -36,6 +36,7 @@ from services import (
 )
 from services import app_auth
 from services import packing_picklist_service
+from packing_sync_api import router as packing_sync_router  # register persistent picklist tables before create_all
 
 Base.metadata.create_all(bind=engine)
 logger = logging.getLogger(__name__)
@@ -97,6 +98,7 @@ def migrate_legacy_brand_data_explicitly(target_engine=engine):
 
 app = FastAPI(title="MYRAA Inventory — Hacker Room", version="2.0")
 app.include_router(business_router)
+app.include_router(packing_sync_router)
 app.include_router(workspace_auth_router)
 app.include_router(clerk_auth_router)
 
