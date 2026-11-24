@@ -35,18 +35,13 @@ document.addEventListener("error", (event) => {
   } else if (image.classList.contains("trash-photo")) {
     const placeholder = document.createElement("div");
     placeholder.className = "trash-photo placeholder";
-    placeholder.innerHTML = '<i class="fa-solid fa-image" aria-hidden="true"></i>';
+    placeholder.innerHTML = '<i class="fa-solid fa-image" aria-hidden="true"></i><span>No photo</span>';
     image.replaceWith(placeholder);
   }
 }, true);
 
-// A small, non-blocking sweep tells staff when any app API request is taking
-// longer than a quick response. Keep it local to /api so static assets do not
-// flash the indicator while rendering a page.
-const appLoadingIndicator = $("app-loading-indicator");
+// Preserve successful mutation sound feedback without a global loading overlay.
 const nativeFetch = window.fetch.bind(window);
-let appApiRequests = 0;
-let appLoadingTimer = null;
 window.fetch = (input, init) => {
   let isAppApi = false;
   try {
@@ -54,8 +49,6 @@ window.fetch = (input, init) => {
     isAppApi = url.origin === window.location.origin && url.pathname.startsWith("/api/");
   } catch {}
   if (!isAppApi) return nativeFetch(input, init);
-  appApiRequests += 1;
-  if (appApiRequests === 1) appLoadingTimer = setTimeout(() => appLoadingIndicator?.classList.add("is-visible"), 320);
   return nativeFetch(input, init).then((response) => {
     // Signal only successfully completed stock/catalog/invoice mutations.
     // In particular exclude Clerk login, image matching (a read-only POST),
@@ -67,12 +60,6 @@ window.fetch = (input, init) => {
       && !/\/(?:visual-match|search|preview|match|lookup|export|status|download|scan)(?:\/|$)/.test(url.pathname);
     if (response.ok && isCrud) window.myraaSound?.success?.();
     return response;
-  }).finally(() => {
-    appApiRequests = Math.max(0, appApiRequests - 1);
-    if (!appApiRequests) {
-      clearTimeout(appLoadingTimer);
-      appLoadingIndicator?.classList.remove("is-visible");
-    }
   });
 };
 
@@ -2098,28 +2085,56 @@ async function loadTrash() {
     grid.innerHTML = items.map((t) => `
       <article class="tcard" data-sku="${esc(t.sku)}">
         <div class="tcard-photo-wrap">
-          ${t.image_path ? `<img class="trash-photo" src="${esc(t.image_path)}?v=${Date.now()}" alt="${esc(t.name)}">` : `<div class="trash-photo placeholder"><i class="fa-solid fa-image"></i></div>`}
+          ${t.image_path ? `<img class="trash-photo" src="${esc(t.image_path)}?v=${Date.now()}" alt="${esc(t.name)}">` : `<div class="trash-photo placeholder"><i class="fa-solid fa-image" aria-hidden="true"></i><span>No photo</span></div>`}
         </div>
         <div class="tcard-info">
           <div class="tcard-name" title="${esc(t.name)}">${esc(t.name)}</div>
           <div class="tcard-meta"><span class="sku-tag">${esc(t.sku)}</span></div>
-          <div class="tcard-meta">${t.variant_count} size${t.variant_count === 1 ? "" : "s"} · deleted ${new Date(t.deleted_at).toLocaleDateString()}</div>
+          <div class="tcard-meta"><span class="trash-size-count">${t.variant_count} size${t.variant_count === 1 ? "" : "s"}</span></div>
+          <div class="tcard-meta trash-deleted-date"><i class="fa-regular fa-calendar" aria-hidden="true"></i> Deleted ${esc(new Date(t.deleted_at).toLocaleDateString("en-IN"))}</div>
         </div>
         <div class="tcard-actions">
-          <button class="btn-secondary trash-restore" type="button"><i class="fa-solid fa-rotate-left"></i><span>Restore</span></button>
-          <button class="btn-secondary trash-delete" type="button"><i class="fa-solid fa-trash-can"></i><span>Permanent delete</span></button>
+          <button class="btn-secondary trash-restore" type="button"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i><span>Restore</span></button>
+          <button class="btn-danger trash-delete" type="button"><i class="fa-solid fa-trash-can" aria-hidden="true"></i><span>Permanent Delete</span></button>
         </div>
       </article>`).join("");
-    grid.querySelectorAll('.trash-delete').forEach(btn => btn.addEventListener('click', async () => {
-      const sku=btn.closest('.tcard').dataset.sku;
-      if(!await window.MYRAAUI.confirm(`Permanently remove ${sku} from your seller Trash? It will no longer appear in your panel.`,{title:'Permanently delete?',confirmText:'Permanent delete',variant:'danger'}))return;
-      btn.disabled=true;try { await apiDelete(`${API}/trash/${encodeURIComponent(sku)}`); showToast(`${sku} removed from seller Trash`);if(trashPage.offset && items.length===1)trashPage.offset=Math.max(0,trashPage.offset-trashPage.limit);await loadTrash(); }
-      catch(e){showToast('Could not remove: '+e.message,true);}finally{btn.disabled=false;}
-    }));
-    grid.querySelectorAll(".trash-restore").forEach((btn) => btn.addEventListener("click", async () => {
-      const sku = btn.closest(".tcard").dataset.sku;
-      try { await apiPost(`${API}/products/${encodeURIComponent(sku)}/restore`); showToast(`${sku} restored successfully`, "success"); if (trashPage.offset && items.length === 1) trashPage.offset = Math.max(0, trashPage.offset - trashPage.limit); loadTrash(); loadSummary(); }
-      catch (err) { showToast("Restore failed: " + err.message, "error", 2200); }
+    // One operation per card, including while the confirmation is open.
+    // The API retains hidden records for private server-side recovery.
+    grid.querySelectorAll('.tcard-actions button').forEach(btn => btn.addEventListener('click', async () => {
+      const card = btn.closest('.tcard');
+      if (card.dataset.busy === 'true') return;
+      const sku = card.dataset.sku;
+      const name = card.querySelector('.tcard-name').textContent;
+      const removing = btn.classList.contains('trash-delete');
+      const actions = [...card.querySelectorAll('.tcard-actions button')];
+      card.dataset.busy = 'true';
+      actions.forEach(action => { action.disabled = true; });
+      try {
+        const confirmed = await window.MYRAAUI.confirm(
+          removing
+            ? `Remove ${name} (${sku}) from your Trash permanently?\nYou will no longer be able to restore this product from your seller panel.`
+            : `Restore ${name} (${sku}) to your product catalog?`,
+          removing
+            ? {title:'Permanently delete product?', confirmText:'Permanent Delete', variant:'danger'}
+            : {title:'Restore product?', confirmText:'Restore Product'}
+        );
+        if (!confirmed) return;
+        if (removing) {
+          await apiDelete(`${API}/trash/${encodeURIComponent(sku)}`);
+          showToast(`${sku} removed from seller Trash`, 'success');
+        } else {
+          await apiPost(`${API}/products/${encodeURIComponent(sku)}/restore`);
+          showToast(`${sku} restored successfully`, 'success');
+        }
+        if (trashPage.offset && items.length === 1) trashPage.offset = Math.max(0, trashPage.offset - trashPage.limit);
+        await loadTrash();
+        if (!removing) loadSummary();
+      } catch (error) {
+        showToast(`${removing ? 'Delete' : 'Restore'} failed: ${error.message}`, 'error', 3000);
+      } finally {
+        delete card.dataset.busy;
+        actions.forEach(action => { action.disabled = false; });
+      }
     }));
 
   } catch (e) { grid.innerHTML = `<p class="hint">Could not load Trash.</p>`; }
