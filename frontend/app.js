@@ -2115,8 +2115,8 @@ async function loadTrash() {
             ? `Remove ${name} (${sku}) from your Trash permanently?\nYou will no longer be able to restore this product from your seller panel.`
             : `Restore ${name} (${sku}) to your product catalog?`,
           removing
-            ? {title:'Permanently delete product?', confirmText:'Permanent Delete', variant:'danger'}
-            : {title:'Restore product?', confirmText:'Restore Product'}
+            ? {title:'Permanently delete product?', confirmText:'Permanent Delete', variant:'danger', layout:'trash'}
+            : {title:'Restore product?', confirmText:'Restore Product', layout:'trash'}
         );
         if (!confirmed) return;
         if (removing) {

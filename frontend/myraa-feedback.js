@@ -90,7 +90,7 @@
     const mode = options.variant === 'danger' ? 'danger' : options.variant === 'warning' ? 'warning' : 'info';
     const previousFocus = document.activeElement;
     const layer = document.createElement('div');
-    layer.className = 'myraa-dialog-layer';
+    layer.className = 'myraa-dialog-layer' + (options.layout === 'trash' ? ' myraa-dialog-layer--trash' : '');
     const dialog = document.createElement('section');
     dialog.className = `myraa-confirm myraa-confirm--${mode}`;
     dialog.setAttribute('role', 'dialog');
