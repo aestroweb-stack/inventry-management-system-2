@@ -21,7 +21,8 @@ BRAND_COLUMNS = ('source brand','seller brand','seller_brand','brand','supplier 
 MARKET_COLUMNS = ('marketplace','market place','marketplace name','marketplace_name','sales channel','sales_channel','channel','platform','platform name','order channel','order_channel','sales platform','marketplacename','saleschannel','market place name','ecommerce platform')
 
 def clean(value):
-    return str(value or '').strip().upper()
+    raw=str(value if value is not None else '').strip().upper()
+    return '' if raw in ('NAN','<NA>','NONE') else raw
 
 def normalized(value):
     return re.sub(r'[_\s-]+', '_', clean(value)).strip('_')
@@ -45,6 +46,7 @@ class CatalogIndex:
         self.products_normal = defaultdict(set)
         self.by_product = defaultdict(list)
         self.markets = defaultdict(set)
+        self.suffixes = defaultdict(set)
         def add_market(code, market):
             if clean(code) and market_key(market): self.markets[normalized(code)].add(market_key(market))
         def add(code, vid):
@@ -59,7 +61,15 @@ class CatalogIndex:
         for v in self.variants.values():
             self.by_product[v.product_id].append(v)
             for code in (v.variant_code,v.seller_sku_code,v.marketplace_sku_code): add(code,v.id)
-        for pid, vs in self.by_product.items(): product_code(vs[0].product.sku, pid)
+        for pid, vs in self.by_product.items():
+            master=vs[0].product.sku
+            product_code(master, pid)
+            parts=clean(master).split('_',2)
+            if len(parts)==3 and all(parts):
+                for v in vs:
+                    for size in {v.size,_norm_size(v.size)} | ({'2XL'} if _norm_size(v.size)=='XXL' else set()):
+                        for stem in (parts[1]+'_'+parts[2],parts[2]):
+                            self.suffixes[normalized(f'{stem}_{size}')].add(v.id)
         for a in db.query(MarketplaceSkuAlias).all():
             if a.variant_id in self.variants: add(a.normalized_code,a.variant_id); add(a.alias_code,a.variant_id); add_market(a.alias_code,a.marketplace); add_market(a.normalized_code,a.marketplace)
         for a in db.query(ProductMarketplaceAlias).all():
@@ -91,11 +101,53 @@ class CatalogIndex:
             if pids: return None,'Size not registered for this product'
         return None,'SKU not registered in active product catalog'
 
+    def resolve_synced(self, sku, size, lookup):
+        # Only exact registered design+colour+size suffixes. Remove a configured
+        # source-brand prefix, never arbitrary design tokens; collisions stay in review.
+        key=normalized(sku); size=_norm_size(size)
+        prefix=next((n for n in sorted(lookup,key=len,reverse=True) if key.startswith(n+'_')),None)
+        stem=key[len(prefix)+1:] if prefix else key
+        keys={stem}
+        if size and not stem.endswith('_'+normalized(size)): keys.add(stem+'_'+normalized(size))
+        hits=set().union(*(self.suffixes.get(k,set()) for k in keys))
+        hits={vid for vid in hits if normalized(clean(self.variants[vid].product.sku).split('_',1)[0]) in lookup}
+        if len(hits)>1: return None,'Ambiguous registered design/colour/size; register an exact SKU alias'
+        if not hits: return None,'SKU not registered in active product catalog'
+        v=self.variants[next(iter(hits))]
+        if size and _norm_size(v.size)!=size: return None,'Uploaded Size conflicts with registered variant'
+        return v,''
+
 
 def market_key(value):
     # Platform names are data, not a hard-coded marketplace list.
-    name=normalized(value)
-    return '' if name in ('','OTHER','UNKNOWN','UNSPECIFIED','N/A','NA') else name.replace('_',' ')
+    # The SKU Summary export labels a Myntra sales channel with account suffixes
+    # (e.g. Myntra PPMP 2(MY_Twinslady)); those are not separate marketplaces.
+    raw=clean(value)
+    raw=re.sub(r'\s*\(\s*MY[_ -][^)]*\)\s*$','',raw)
+    raw=re.sub(r'\s+PPMP(?:\s+\d+)?$','',raw)
+    name=normalized(raw)
+    return '' if name in ('','OTHER','UNKNOWN','UNSPECIFIED','N/A','NA','NAN','—','TOTAL','GRAND_TOTAL','SUB_TOTAL','COURIER','MARKETPLACE','COUNT') else name.replace('_',' ')
+
+
+def summary_marketplace(frame, sku_col, qty_col, market_col):
+    """Recognize a separated Marketplace/Count summary beside the SKU table.
+    Return (is_summary, platform counts). Never treat sidecar labels as row data.
+    """
+    keys=list(frame.columns)
+    if market_col is None: return False,{}
+    mi=keys.index(market_col); qi=keys.index(qty_col); si=keys.index(sku_col)
+    if mi<=max(qi,si) or mi+1>=len(keys): return False,{}
+    if clean(keys[mi+1]) not in ('COUNT','QTY','QUANTITY','TOTAL','PIECES'): return False,{}
+    if not any(str(k).lower().startswith('unnamed:') or not clean(k) for k in keys[max(qi,si)+1:mi]): return False,{}
+    counts=Counter()
+    for label,qty in zip(frame[market_col],frame[keys[mi+1]]):
+        raw=clean(label)
+        if TOTAL.fullmatch(raw) or raw in ('COURIER','MARKETPLACE'): break
+        name=market_key(raw)
+        if name:
+            try: counts[name]+=valid_qty(qty)
+            except PicklistError: return True,{}
+    return True,dict(counts)
 
 
 def brand_lookup(children):
@@ -138,13 +190,14 @@ def consolidate(db, files, group, selected_date, default_brand='', include_audit
     try: day=date.fromisoformat(selected_date).isoformat()
     except (TypeError,ValueError): raise PicklistError('Picklist date must be YYYY-MM-DD')
     children=group['children'] or [group['name']]; lookup,canonical=brand_lookup(children)
+    catalog_brands={**lookup,normalized(group['name']):group['name']}
     if default_brand and normalized(default_brand) not in lookup:
         raise PicklistError('Fallback brand must belong to selected Main Brand')
     if not files or len(files)>12 or sum(len(p) for _,p in files)>MAX_UPLOAD_BYTES:
         raise PicklistError('Upload 1–12 files, maximum 12 MB combined')
     if len({(sha256(payload).digest(),market_key((file_marketplaces or ['']*len(files))[i])) for i,(_,payload) in enumerate(files)}) != len(files):
         raise PicklistError("Duplicate input file detected; upload each file only once")
-    catalog=CatalogIndex(db); audit=[]; skipped=0; aggregate={}; total=0
+    catalog=CatalogIndex(db); audit=[]; skipped=0; aggregate={}; total=0; observed_markets=set()
     for file_index,(filename,payload) in enumerate(files):
         manual=market_key((file_marketplaces or ['']*len(files))[file_index])
         if not payload or not filename.lower().endswith(('.xlsx','.xls','.csv')): raise PicklistError('Upload Excel or CSV files')
@@ -153,7 +206,16 @@ def consolidate(db, files, group, selected_date, default_brand='', include_audit
         keys=list(frame.columns); sku_col=_pick_column(keys,SOURCE_COLUMNS); qty_col=_pick_column(keys,QTY_COLUMNS)
         size_col=_pick_column(keys,SIZE_COLUMNS); brand_col=_pick_column(keys,BRAND_COLUMNS); market_col=_pick_column(keys,MARKET_COLUMNS)
         if sku_col is None or qty_col is None: raise PicklistError(f'{filename}: SKU and Qty columns required')
-        for num,row in enumerate(frame.where(frame.notna(),None).to_dict(orient='records'),2):
+        sidecar, market_counts=summary_marketplace(frame,sku_col,qty_col,market_col)
+        observed_markets.update(market_counts)
+        file_rows=frame.astype(object).where(frame.notna(),None).to_dict(orient='records')
+        file_qty=sum(valid_qty(row.get(qty_col)) for row in file_rows if clean(row.get(sku_col)) and not TOTAL.fullmatch(clean(row.get(sku_col)))) if sidecar else 0
+        summary_market=next(iter(market_counts)) if sidecar and len(market_counts)==1 and sum(market_counts.values())==file_qty else ''
+        summary_issue=''
+        if sidecar and not summary_market:
+            summary_issue='Marketplace summary cannot assign individual SKU quantities; upload separate marketplace files or a row-level Marketplace column'
+        if summary_market and manual and summary_market!=manual: summary_issue='File marketplace setting conflicts with Marketplace summary'
+        for num,row in enumerate(file_rows,2):
             sku=clean(row.get(sku_col)); qty_raw=row.get(qty_col)
             if TOTAL.fullmatch(sku) or (not sku and any(TOTAL.fullmatch(clean(x)) for x in row.values())):
                 skipped+=1; continue
@@ -163,17 +225,22 @@ def consolidate(db, files, group, selected_date, default_brand='', include_audit
             except PicklistError as exc: raise PicklistError(f'{filename} row {num}: {exc}') from exc
             if len(audit)>=MAX_SOURCE_ROWS: raise PicklistError('Maximum 20,000 item rows per picklist')
             total+=qty; brand,issue=source_brand(sku,row.get(brand_col) if brand_col is not None else '',children,default_brand,(lookup,canonical))
-            v,match_issue=catalog.resolve(sku,row.get(size_col) if size_col is not None else '')
+            row_size=row.get(size_col) if size_col is not None else ''
+            v,match_issue=catalog.resolve(sku,row_size)
+            if not v and match_issue=='SKU not registered in active product catalog' and (not issue or issue.startswith('Source brand missing')):
+                v,match_issue=catalog.resolve_synced(sku,row_size,catalog_brands)
+            if v and issue.startswith('Source brand missing') and normalized(clean(v.product.sku).split('_',1)[0]) in catalog_brands:
+                brand=catalog_brands[normalized(clean(v.product.sku).split('_',1)[0])]; issue=''
             master=clean(v.product.sku) if v else ''; party=''; printable=''; name=v.product.name if v else ''; size=_norm_size(v.size) if v else ''
             if v: party,party_issue=master_party(master)
             else: party_issue=''
-            explicit=market_key(row.get(market_col)) if market_col is not None else ''
+            explicit=summary_market if sidecar else market_key(row.get(market_col)) if market_col is not None else ''
             detected=catalog.markets.get(normalized(sku),set())
-            market_issue=''
+            market_issue=summary_issue
             if explicit and manual and explicit!=manual: market_issue='Marketplace column conflicts with file marketplace setting'
-            marketplace=explicit or manual or (next(iter(detected)) if len(detected)==1 else '')
-            if not marketplace and len(detected)>1: market_issue='Ambiguous marketplace; supply marketplace column or file setting'
-            if not marketplace and len(files)>1: marketplace=f'UNSPECIFIED FILE {file_index+1}'
+            marketplace='' if summary_issue else explicit or manual or (next(iter(detected)) if len(detected)==1 else '')
+            if not marketplace and not market_issue and len(detected)>1: market_issue='Ambiguous marketplace; supply marketplace column or file setting'
+            if not marketplace and not market_issue and len(files)>1: marketplace=f'UNSPECIFIED FILE {file_index+1}'
             issue='; '.join(x for x in (issue,match_issue,party_issue,market_issue) if x)
             if v: printable=f'{master}_{size}'
             item={'marketplace':marketplace,'file':filename,'row':num,'brand':brand,'source_sku':sku,'master_sku':master,'size':size,'pick_sku':printable,'party':party,'product':name,'qty':qty,'issue':issue}
@@ -190,7 +257,7 @@ def consolidate(db, files, group, selected_date, default_brand='', include_audit
     parties=Counter(); market_totals=Counter()
     for item in items:
         market=item.get('marketplace',''); parties[f'{market} · {item["party"]}' if market else item['party']]+=item['qty']; market_totals[market or 'Unspecified']+=item['qty']
-    return {'date':day,'group':group,'files':[x[0] for x in files], 'include_audit':bool(include_audit),'source_rows':len(audit),'total_qty':total,'matched_qty':matched,'review_qty':review_qty,'review_count':len(review),'merged_rows':len(items),'skipped_rows':skipped,'items':items,'audit':audit,'party_totals':dict(parties),'marketplace_totals':dict(market_totals),'marketplaces':sorted({x['marketplace'] for x in audit if x['marketplace']})}
+    return {'export_version':9,'date':day,'group':group,'files':[x[0] for x in files], 'include_audit':bool(include_audit),'source_rows':len(audit),'total_qty':total,'matched_qty':matched,'review_qty':review_qty,'review_count':len(review),'merged_rows':len(items),'skipped_rows':skipped,'items':items,'audit':audit,'party_totals':dict(parties),'marketplace_totals':dict(market_totals),'marketplaces':sorted(observed_markets|{x['marketplace'] for x in audit if x['marketplace']})}
 
 
 def pack_lanes(items, capacity=40):
@@ -213,7 +280,7 @@ def pack_lanes(items, capacity=40):
 
 
 def workbook_bytes(result):
-    """Production XLSX exporter, one main group sheet, audit sheets only as requested/needed."""
+    """Production XLSX exporter: compact SKU/quantity pairs only; audit stays in the saved run."""
     from openpyxl import Workbook
     from openpyxl.styles import Font, Border, Side, Alignment
     from openpyxl.utils import get_column_letter
@@ -227,22 +294,28 @@ def workbook_bytes(result):
     lanes=[]; markets=defaultdict(list)
     for item in result['items']: markets[item.get('marketplace','')].append(item)
     for market, market_items in sorted(markets.items()):
-        # A visible marketplace header occupies one of the 40 physical rows.
-        for lane in pack_lanes(market_items,capacity=39 if market else 40): lanes.append((market,lane))
+        # Reference layout: one title row above 39 item/separator rows.
+        for lane in pack_lanes(market_items,capacity=39): lanes.append((market,lane))
     if not lanes:
         # No fake packing quantities when all rows require review.
         ws.cell(1,1,'NO MATCHED ITEMS — REVIEW REQUIRED'); ws['A1'].font=font; ws['A1'].border=border; ws.row_dimensions[1].height=38; ws.column_dimensions['A'].width=70
     for idx,(market,lane) in enumerate(lanes):
         col=1+idx*3
         max_sku=max(len(x['pick_sku']) for x in lane if x)
-        ws.column_dimensions[get_column_letter(col)].width=max(24,min(235,max_sku*2.5+4))
+        ws.column_dimensions[get_column_letter(col)].width=max(24,min(235,max_sku*2.2+4))
         ws.column_dimensions[get_column_letter(col+1)].width=max(12,max(len(str(x["qty"])) for x in lane if x)*2.5+3)
         if idx<len(lanes)-1: ws.column_dimensions[get_column_letter(col+2)].width=2.5
-        if market:
-            ws.merge_cells(start_row=1,start_column=col,end_row=1,end_column=col+1)
-            cell=ws.cell(1,col,market); cell.data_type='s'; cell.font=font; cell.border=border; cell.alignment=align
-            ws.cell(1,col+1).border=border; ws.row_dimensions[1].height=38
-        for row,item in enumerate(lane,2 if market else 1):
+        # Like the reference, a title can span two side-by-side SKU/Qty pairs.
+        # Never span marketplaces or print-page boundaries.
+        if idx%2==0 or lanes[idx-1][0]!=market:
+            end_col=col+4 if idx%2==0 and idx+1<len(lanes) and lanes[idx+1][0]==market else col+1
+            ws.merge_cells(start_row=1,start_column=col,end_row=1,end_column=end_col)
+            title=f"{result['group']['name']} - {date.fromisoformat(result['date']).strftime('%d/%m/%Y')}" if result.get('date') else result['group']['name']
+            if market: title+=f' · {market}'
+            cell=ws.cell(1,col,title); cell.data_type='s'; cell.font=font; cell.border=border; cell.alignment=Alignment(horizontal='center',vertical='center',shrink_to_fit=True)
+            for header_col in range(col+1,end_col+1): ws.cell(1,header_col).border=border
+        ws.row_dimensions[1].height=38
+        for row,item in enumerate(lane,2):
             ws.row_dimensions[row].height=38
             if item is None: continue
             for c,value in ((col,item['pick_sku']),(col+1,item['qty'])):
@@ -256,15 +329,4 @@ def workbook_bytes(result):
     ws.page_setup.scale=34 # 40 rows × 38pt fit vertically on A4 landscape with these margins
     ws.page_margins.left=.15; ws.page_margins.right=.15; ws.page_margins.top=.2; ws.page_margins.bottom=.2
     for idx in range(2,len(lanes),2): ws.col_breaks.append(Break(id=idx*3))
-    # Always include explicit review sheet if quantities were excluded from packing.
-    for title,rows in [('Review',[x for x in result['audit'] if x['issue']]),('Source Audit',result['audit'] if result['include_audit'] else [])]:
-        if not rows: continue
-        sheet=wb.create_sheet(title); keys=['file','row','brand','source_sku','master_sku','party','size','qty','issue','marketplace']; sheet.append(keys)
-        for row in rows:
-            sheet.append([row.get(k,'') for k in keys])
-            for cell in sheet[sheet.max_row]:
-                if isinstance(cell.value,str): cell.data_type='s'
-        for cell in sheet[1]: cell.font=Font(bold=True); cell.border=border
-        for index,width in enumerate([30,10,22,45,45,18,12,12,70,30],1): sheet.column_dimensions[get_column_letter(index)].width=width
-        sheet.freeze_panes='A2'; sheet.auto_filter.ref=sheet.dimensions
     out=BytesIO(); wb.save(out); return out.getvalue()

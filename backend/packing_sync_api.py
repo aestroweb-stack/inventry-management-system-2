@@ -129,7 +129,7 @@ def process(files:list[UploadFile]=File(...), group_id:int=Form(...), picklist_d
     return summary(run)
 
 @router.get('/history')
-def history(day:str='',group_id:int|None=None,page:int=Query(1,ge=1),page_size:int=Query(10,ge=1,le=50),db:Session=Depends(get_db)):
+def history(day:str='',group_id:int|None=None,page:int=Query(1,ge=1),page_size:int=Query(6,ge=1,le=6),db:Session=Depends(get_db)):
     q=db.query(SavedPicklist).filter(SavedPicklist.hidden.is_(False))
     if day: q=q.filter_by(picklist_date=day)
     if group_id is not None: q=q.filter_by(group_id=group_id)
@@ -147,7 +147,7 @@ def visible_run(db,id,*,binary=False):
     return r
 
 @router.get('/history/{id}')
-def details(id:int,view:str='audit',status:str='all',brand:str='',marketplace:str='',q:str='',page:int=Query(1,ge=1),page_size:int=Query(25,ge=1,le=100),db:Session=Depends(get_db)):
+def details(id:int,view:str='audit',status:str='all',brand:str='',marketplace:str='',q:str='',page:int=Query(1,ge=1),page_size:int=Query(6,ge=1,le=6),db:Session=Depends(get_db)):
     r=visible_run(db,id); result=json.loads(r.result_json)
     if view not in ('audit','items'): raise HTTPException(422,'Invalid view')
     rows=result[view]
@@ -164,7 +164,8 @@ def details(id:int,view:str='audit',status:str='all',brand:str='',marketplace:st
 @router.get('/history/{id}/excel')
 def download(id:int,allow_partial:bool=False,db:Session=Depends(get_db)):
     r=visible_run(db,id,binary=True); s=json.loads(r.summary_json)
-    if s['review_count'] and not allow_partial: raise HTTPException(409,'Unmatched rows remain. Confirm partial export; they are included in Review sheet, not packing rows.')
+    if not s['matched_qty']: raise HTTPException(409,'No matched packing items. Resolve SKU review and reprocess before downloading.')
+    if s['review_count'] and not allow_partial: raise HTTPException(409,'Unmatched rows remain. Confirm partial export; unmatched quantities remain in the on-screen saved review and are not packed.')
     name=re.sub(r'[^A-Za-z0-9_-]','-',s['group']['name'])[:60] or 'Brand'
     return Response(r.workbook,media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',headers={'Content-Disposition':f'attachment; filename="MYRAA_Packing_{name}_{r.picklist_date}.xlsx"','X-Picklist-Total-Qty':str(s['total_qty']),'X-Picklist-Matched-Qty':str(s['matched_qty'])})
 

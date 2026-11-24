@@ -69,7 +69,9 @@ def test_excel_format():
     result={'group':GROUP,'items':items,'audit':[],'include_audit':False}
     wb=load_workbook(BytesIO(s.workbook_bytes(result))); ws=wb.active
     assert wb.sheetnames==['Main Group'];assert ws.max_row==40 and ws.max_column==5
-    assert ws['A40'].value=='MAIN_V_039_S' and ws['D1'].value=='MAIN_V_040_S' and ws['D6'].value is None and ws['D7'].value=='MAIN_LP_000_S'
+    assert 'A1:E1' in {str(r) for r in ws.merged_cells.ranges}
+    assert all(ws.cell(i,1).value!='TOTAL' for i in range(1,41))
+    assert ws['A40'].value=='MAIN_V_038_S' and ws['D2'].value=='MAIN_V_039_S' and ws['D8'].value is None and ws['D9'].value=='MAIN_LP_000_S'
     assert all(ws.cell(r,3).value is None for r in range(1,41))
     assert ws['A1'].font.sz==22 and ws['A1'].font.bold and ws.row_dimensions[1].height==38
     assert all(getattr(ws['A1'].border,k).color.rgb=='FF000000' for k in ('top','bottom','left','right'))
@@ -103,7 +105,8 @@ def test_api_partial_review_requires_confirmation(session):
         r=c.post(base+'/process',files=[('files',('a.csv',b'SKU,Qty\nALPHA_DRESS_S,2\nMISSING,3\n','text/csv'))],data={'group_id':g['id'],'picklist_date':'2026-11-25'}).json()
         url=base+f'/history/{r["id"]}/excel'; assert c.get(url).status_code==409
         wb=load_workbook(BytesIO(c.get(url,params={'allow_partial':'true'}).content))
-        assert wb.sheetnames==['G','Review'] and wb['Review']['H2'].value==3
+        assert wb.sheetnames==['G'] and wb.active['B2'].value==2
+        assert c.get(base+f'/history/{r["id"]}',params={'status':'review'}).json()['rows'][0]['qty']==3
 
 def test_seller_database_isolation_and_restart(monkeypatch,tmp_path):
     import database
@@ -149,7 +152,7 @@ def test_r8_marketplace_partition_same_sku_and_arbitrary_platform(session):
     assert r['matched_qty']==16 and r['skipped_rows']==1
     assert {x['marketplace']:x['qty'] for x in r['items']}=={'MYNTRA':5,'FLIPKART':4,'NEW SHOP':7}
     ws=load_workbook(BytesIO(s.workbook_bytes(r))).active
-    assert [ws.cell(1,col).value for col in (1,4,7)]==['FLIPKART','MYNTRA','NEW SHOP']
+    assert [ws.cell(1,col).value for col in (1,4,7)]==['Main Group - 25/11/2026 · FLIPKART','Main Group - 25/11/2026 · MYNTRA','Main Group - 25/11/2026 · NEW SHOP']
     assert all(ws.cell(row,col).value is None for row in range(1,3) for col in (3,6))
     assert [ws.cell(2,col).value for col in (2,5,8)]==[4,5,7]
     assert ws['A2'].font.sz==22 and ws['A2'].font.bold and ws.row_dimensions[2].height==38
@@ -173,5 +176,47 @@ def test_r8_marketplace_block_40_rows_and_party_number():
     items=[{**x,'marketplace':'MYNTRA'} for x in make_items('V',40)]+[{**x,'marketplace':'FLIPKART'} for x in make_items('LP',2)]
     ws=load_workbook(BytesIO(s.workbook_bytes({'group':GROUP,'items':items,'audit':[],'include_audit':False}))).active
     assert ws.max_row==40
-    assert [ws.cell(1,col).value for col in (1,4,7)]==['FLIPKART','MYNTRA','MYNTRA']
+    assert [ws.cell(1,col).value for col in (1,4,7)]==['Main Group · FLIPKART','Main Group · MYNTRA','Main Group · MYNTRA']
     assert sum(c.value for row in ws for c in row if isinstance(c.value,int))==42
+
+
+def test_r9_sidecar_summary_and_six_rows(session):
+    # Real export structure: left SKU table + unrelated right-side summary.
+    file=b'Master SKU,Category,Size,Color,Qty,,Marketplace,Count\nALPHA_DRESS_S,Top,S,Black,2,,Myntra PPMP 2(MY_Twinslady),9\nBETA_STYLE_S,Top,S,Black,3,,Total,9\nBETA_TOP,Top,M,Black,4,,Courier,Count\nTotal,,,,9,,Total,9\n'
+    r=s.consolidate(session,[('orders.csv',file)],GROUP,'2026-11-25')
+    assert r['total_qty']==r['matched_qty']==9 and r['skipped_rows']==1 and r['marketplaces']==['MYNTRA']
+    assert [x['qty'] for x in r['items']]==[5,4]
+    mixed=file.replace(b'Myntra PPMP 2(MY_Twinslady),9',b'Myntra PPMP 2(MY_Twinslady),5').replace(b',,Total,9\nBETA_TOP',b',,Flipkart,4\nBETA_TOP')
+    r=s.consolidate(session,[('orders.csv',mixed)],GROUP,'2026-11-25')
+    assert r['total_qty']==r['review_qty']==9 and not r['items'] and all('summary cannot assign' in x['issue'] for x in r['audit'])
+    same_platform=mixed.replace(b'Flipkart,4',b'Myntra PPMP(MY_MFB MODA),4')
+    r=s.consolidate(session,[('orders.csv',same_platform)],GROUP,'2026-11-25')
+    assert r['matched_qty']==9 and r['marketplaces']==['MYNTRA']
+
+
+def test_r9_exact_suffix_across_synced_brands(session):
+    p=models.Product(sku='TWINS_V_HELLY_PURPLE',name='Helly');session.add(p);session.flush()
+    session.add_all([models.Variant(product_id=p.id,size=size,variant_code=f'TWINS_V_HELLY_PURPLE-{size}',current_stock=0) for size in ('S','M')]);session.commit()
+    group={'id':42,'name':'Twins Lady','children':['TWINS LADY | TWINS','ANOUK','FUSION']}
+    payload=b'Master SKU,Category,Size,Color,Qty,,Marketplace,Count\nANOUK_HELLY_PURPLE_S,A,S,PURPLE,2,,Myntra PPMP 2(MY_Twinslady),10\nFUSION_HELLY_PURPLE_S,B,S,PURPLE,3,,Total,10\nTWINS_HELLY_PURPLE_S,A,S,PURPLE,4,,Courier,Count\nTWINS_HELLY_PURPLE_M,A,M,PURPLE,1,,Total,10\nTotal,,,,10,,,'
+    r=s.consolidate(session,[('orders.csv',payload)],group,'2026-11-25')
+    assert r['matched_qty']==10 and {x['pick_sku']:x['qty'] for x in r['items']}=={'TWINS_V_HELLY_PURPLE_S':9,'TWINS_V_HELLY_PURPLE_M':1}
+    # A second party with the same design/colour/size must not be guessed.
+    p=models.Product(sku='TWINS_LP_HELLY_PURPLE',name='Helly');session.add(p);session.flush();session.add(models.Variant(product_id=p.id,size='S',variant_code='TWINS_LP_HELLY_PURPLE-S',current_stock=0));session.commit()
+    r=s.consolidate(session,[('orders.csv',payload)],group,'2026-11-25')
+    assert r['review_qty']==9 and r['matched_qty']==1
+
+
+def test_r9_page_limit_and_zero_match_export(session):
+    app=FastAPI();app.include_router(router);app.dependency_overrides[get_db]=lambda:session
+    with TestClient(app) as c:
+        b='/api/packing-sync';g=c.post(b+'/groups',json={'name':'G','children':['ALPHA']}).json()
+        for i in range(7):
+            payload=b'SKU,Qty\n'+b'ALPHA_DRESS_S,1\n'*13
+            run=c.post(b+'/process',files=[('files',('a.csv',payload,'text/csv'))],data={'group_id':g['id'],'picklist_date':f'2026-11-{i+1:02d}'}).json()
+        assert len(c.get(b+'/history').json()['items'])==6 and len(c.get(b+'/history',params={'page':2}).json()['items'])==1
+        url=b+f'/history/{run["id"]}'
+        assert [len(c.get(url,params={'page':i}).json()['rows']) for i in (1,2,3)]==[6,6,1]
+        assert c.get(url,params={'page_size':7}).status_code==422
+        miss=c.post(b+'/process',files=[('files',('a.csv',b'SKU,Qty\nMISSING,3\n','text/csv'))],data={'group_id':g['id'],'picklist_date':'2026-11-25'}).json()
+        assert c.get(b+f'/history/{miss["id"]}/excel',params={'allow_partial':True}).status_code==409
