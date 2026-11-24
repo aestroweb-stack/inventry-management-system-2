@@ -133,6 +133,26 @@ class ClerkIntegrationTests(unittest.TestCase):
             user=db.query(workspace_models.WorkspaceUser).filter_by(email='admin@example.com').one()
             self.assertEqual(user.display_name,'Myraa Admin New')
 
+    def test_profile_fields_and_high_resolution_photo_survive_exchange(self):
+        import io
+        from PIL import Image
+        self.assertTrue(self.exchange().json()['approved'])
+        fields={'display_name':'Test Seller','business_name':'Test Studio','phone':'1234567890','address':'Test address'}
+        r=self.client.patch('/api/workspace-auth/me',headers={'Origin':'https://inventory.example.com'},json=fields)
+        self.assertEqual(r.status_code,200,r.text)
+        with tempfile.TemporaryDirectory() as tmp, patch.object(workspace_auth,'PHOTO_DIR',Path(tmp)):
+            # A real, uncompressed PNG larger than the previous 2 MB limit.
+            picture=Image.frombytes('RGB',(1200,1200),os.urandom(1200*1200*3))
+            blob=io.BytesIO();picture.save(blob,'PNG');raw=blob.getvalue()
+            self.assertGreater(len(raw),2_000_000)
+            r=self.client.post('/api/workspace-auth/me/photo',headers={'Origin':'https://inventory.example.com'},files={'file':('test.png',raw,'image/png')})
+            self.assertEqual(r.status_code,200,r.text)
+            for returned in (self.exchange().json()['user'],self.client.get('/api/workspace-auth/me').json()):
+                for key,value in fields.items():self.assertEqual(returned[key],value)
+                self.assertEqual(returned['photo_url'],'/api/workspace-auth/me/photo')
+            r=self.client.get('/api/workspace-auth/me/photo');self.assertEqual(r.status_code,200)
+            with Image.open(io.BytesIO(r.content)) as img:self.assertEqual(img.size,(1200,1200))
+
     def test_switching_clerk_user_never_reuses_admin_role(self):
         import uuid
         with self.Session() as db:

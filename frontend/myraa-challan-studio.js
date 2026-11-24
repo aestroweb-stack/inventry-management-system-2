@@ -58,10 +58,7 @@ function calc(){
    tr.querySelector('.cs-row-value').textContent=Number(o*c).toLocaleString('en-IN',{maximumFractionDigits:2});
   }
  });
- $('cs-ordered').textContent=ordered.toLocaleString('en-IN')+' pcs';
- $('cs-received').textContent=received.toLocaleString('en-IN')+' pcs';
- $('cs-pending').textContent=Math.max(0,ordered-received).toLocaleString('en-IN')+' pcs';
- $('cs-value').textContent=money(cost);
+ $('cs-draft-totals').textContent=`Current invoice: ${ordered} ordered · ${received} received · ${Math.max(0,ordered-received)} pending · Received value ${money(cost)}`;
  const ready=ordered>0 && ordered===received && state.rows.every(r=>r.unit_cost!=null&&r.unit_cost!==''&&Number(r.qty_ordered)>=1);
  $('cs-push').disabled=state.busy||!state.id||!editable()||state.status==='POSTED'||!ready;
  $('cs-push').title=state.status==='POSTED'?'Already posted':!state.id?'Save the invoice first':!ready?'All pieces must be received and costed before push':'Push once to inventory';
@@ -76,7 +73,7 @@ function renderFiles(){
   if(item.type?.startsWith('image/')){const img=document.createElement('img');img.src=item.url;img.alt=item.filename;div.append(img);}
   else {const icon=document.createElement('i');icon.className='fa-solid fa-file-pdf';div.append(icon);}
   const label=document.createElement('small');label.textContent=item.filename;label.title=item.filename;div.append(label);
-  if(editable()){
+  if(editable()&&state.status!=='POSTED'){
    const close=document.createElement('button');close.type='button';close.textContent='×';close.setAttribute('aria-label','Remove '+item.filename);
    close.addEventListener('click',async()=>{
     try {
@@ -91,7 +88,7 @@ function renderFiles(){
 }
 function clearFiles(){state.files.forEach(x=>URL.revokeObjectURL(x.url));state.files=[];state.attachments=[];renderFiles();}
 function reset(){state.id=null;state.status='NEW';state.mode='edit';state.invoice_no='';state.rows=[];clearFiles();for(const id of ['cs-party','cs-number','cs-date'])$(id).disabled=false;$('cs-party').value='';$('cs-number').value='';$('cs-date').value=dateToday();$('cs-export').href='/api/purchase-challans/template';render();$('cs-last-open').hidden=true;msg('New invoice ready. Click Add Item to begin.');window.myraaClearChallanSelection?.();}
-function select(data,mode='edit'){state.id=data.id;state.status=data.status;state.mode=mode;state.invoice_no=data.invoice_no||'';state.rows=(data.lines||[]).map(x=>({id:x.id,name:x.name,sku:x.sku,size:x.size,qty_ordered:x.qty_ordered,qty_received:x.qty_received,unit_cost:x.unit_cost}));clearFiles();state.attachments=data.attachments||[];$('cs-party').value=data.party_name;$('cs-number').value=data.challan_no;$('cs-date').value=data.order_date;$('cs-export').href='/api/purchase-challans/'+data.id+'/export';for(const id of ['cs-party','cs-number','cs-date'])$(id).disabled=!editable()||data.status==='POSTED';$('cs-last-open').hidden=true;render();renderFiles();msg(data.status==='POSTED'?'Posted invoice: correct received/ordered quantities and Save. Corrections involving dispatched units are blocked for safety.':mode==='view'?'Viewing saved invoice. Choose Edit in records to make changes.':'Invoice loaded. You can edit its details and save.');}
+function select(data,mode='edit'){state.id=data.id;state.status=data.status;state.mode=mode;state.invoice_no=data.invoice_no||'';state.rows=(data.lines||[]).map(x=>({id:x.id,name:x.name,sku:x.sku,size:x.size,qty_ordered:x.qty_ordered,qty_received:x.qty_received,unit_cost:x.unit_cost}));clearFiles();state.attachments=data.attachments||[];$('cs-party').value=data.party_name;$('cs-number').value=data.challan_no;$('cs-date').value=data.order_date;$('cs-export').href='/api/purchase-challans/'+data.id+'/export';for(const id of ['cs-party','cs-number','cs-date'])$(id).disabled=!editable()||data.status==='POSTED';$('cs-last-open').hidden=true;render();renderFiles();msg(data.status==='POSTED'?'Posted invoice: correct received/ordered quantities and Save. Corrections after dispatch or a physical recount require manual review.':mode==='view'?'Viewing saved invoice. Choose Edit in records to make changes.':'Invoice loaded. You can edit its details and save.');}
 function payload(){const party=$('cs-party').value.trim(),number=$('cs-number').value.trim(),date=$('cs-date').value;if(!party||!number||!date)throw new Error('Supplier, invoice reference number and date are required.');if(!state.rows.length)throw new Error('Add at least one item.');
 const lines=state.rows.map((r,i)=>{
  const name=String(r.name||'').trim(),size=String(r.size||'').trim().toUpperCase(),ordered=Number(r.qty_ordered),received=Number(r.qty_received);
@@ -102,6 +99,7 @@ const lines=state.rows.map((r,i)=>{
 async function uploadQueued(id){if(!state.files.length)return null;const form=new FormData();state.files.forEach(x=>form.append('files',x.file));const response=await fetch(`/api/purchase-challans/${id}/attachments`,{method:'POST',body:form,credentials:'same-origin'});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.detail||`Invoice upload failed: HTTP ${response.status}`);return data;}
 async function save({stayOpen=false}={}){
  if(state.busy||!editable())return null;
+ if(state.status==='POSTED'&&!await window.MYRAAUI.confirm('Save quantity correction? Only the difference will be applied to available inventory.',{title:'Correct posted invoice?',confirmText:'Save correction',variant:'warning'}))return null;
  let body;
  try{body=payload();}catch(error){msg(error.message,true);throw error;}
  state.busy=true;calc();msg('Saving invoice…');
@@ -120,7 +118,7 @@ async function save({stayOpen=false}={}){
     return null;
    }
   }
-  if(state.status==='POSTED'){select(saved,'edit');msg('Posted invoice quantity correction saved and inventory reconciled.');}
+  if(state.status==='POSTED'){select(saved,'edit');window.myraaLoadCosting?.();window.refreshInventoryViews?.();msg('Posted invoice quantity correction saved and inventory reconciled.');}
   else if(stayOpen){select(saved,'edit');msg('Invoice saved. Confirm Push Received Stock to update inventory.');}
   else {
    reset();

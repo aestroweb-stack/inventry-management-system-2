@@ -254,6 +254,7 @@ function switchView(name, { updateUrl = true } = {}) {
   if (name === "trash") { loadTrash(); }
   if (name === "visual") loadVisualSearchStatus();
   if (name === "history") { history.offset = 0; loadHistory(true); }
+  window.dispatchEvent(new CustomEvent("myraa:view", {detail:name}));
 }
 
 window.addEventListener("popstate", () => switchView(viewFromLocation(), { updateUrl: false }));
@@ -485,13 +486,18 @@ function renderDetail(product, container, opts = {}) {
     seat.querySelector(".seat-save").addEventListener("click", async () => {
       const input = seat.querySelector(".seat-count");
       if (input.value === "") { showToast("Enter a count first", true); return; }
+      const button=seat.querySelector(".seat-save");if(button.disabled)return;button.disabled=true;
       try {
-        const updated = await apiPost(`${API}/inventory/adjust`, { variant_code: code, new_count: Number(input.value), note: "manual update" });
+        const updated = await apiPost(`${API}/inventory/adjust`, { variant_code: code, new_count: Number(input.value), expected_current_stock: product.variants.find(v=>v.variant_code===code)?.current_stock, note: "manual update" });
         input.value = ""; input.placeholder = updated.current_stock;
         seat.querySelector(".seat-status").innerHTML = `<span class="status-pill status-${updated.status}">${STATUS_LABEL[updated.status]}</span>`;
         showToast(`${code} set to ${updated.current_stock}`);
+        const localVariant=product.variants.find(v=>v.variant_code===code);if(localVariant)Object.assign(localVariant,updated);
+        const grid=seat.parentElement;const revision=(grid.myraaValuationRevision||0)+1;grid.myraaValuationRevision=revision;
+        const fresh=await getJSON(`${API}/products/${encodeURIComponent(product.sku)}`);
+        if(grid.myraaValuationRevision===revision && container.querySelector(".seat-grid")===grid){Object.assign(product,fresh);window.myraaRefreshDetailValuation?.(fresh,container);}
         await refreshInventoryViews();
-      } catch (err) { showToast("Update failed: " + err.message, true); }
+      } catch (err) { showToast("Update failed: " + err.message, true); } finally {button.disabled=false;}
     });
     seat.querySelector(".seat-del").addEventListener("click", () => {
       askConfirm(`Delete size ${code}?`, "Moves this size to Trash. You can restore it later.", async () => {
@@ -2106,9 +2112,9 @@ async function loadTrash() {
       </article>`).join("");
     grid.querySelectorAll('.trash-delete').forEach(btn => btn.addEventListener('click', async () => {
       const sku=btn.closest('.tcard').dataset.sku;
-      if(!await window.MYRAAUI.confirm(`Hide ${sku} permanently from your Trash? The server keeps its history for recovery.`,{title:'Remove from seller Trash?',confirmText:'Hide permanently',variant:'danger'}))return;
-      try { await apiDelete(`${API}/trash/${encodeURIComponent(sku)}`); showToast(`${sku} removed from seller Trash`);loadTrash(); }
-      catch(e){showToast('Could not remove: '+e.message,true);}
+      if(!await window.MYRAAUI.confirm(`Permanently remove ${sku} from your seller Trash? It will no longer appear in your panel.`,{title:'Permanently delete?',confirmText:'Permanent delete',variant:'danger'}))return;
+      btn.disabled=true;try { await apiDelete(`${API}/trash/${encodeURIComponent(sku)}`); showToast(`${sku} removed from seller Trash`);if(trashPage.offset && items.length===1)trashPage.offset=Math.max(0,trashPage.offset-trashPage.limit);await loadTrash(); }
+      catch(e){showToast('Could not remove: '+e.message,true);}finally{btn.disabled=false;}
     }));
     grid.querySelectorAll(".trash-restore").forEach((btn) => btn.addEventListener("click", async () => {
       const sku = btn.closest(".tcard").dataset.sku;
@@ -2119,72 +2125,6 @@ async function loadTrash() {
   } catch (e) { grid.innerHTML = `<p class="hint">Could not load Trash.</p>`; }
 }
 
-
-// Seller-owned Recovery Center. All reads/writes use the same authenticated
-// session and tenant-scope enforced by the existing FastAPI middleware.
-function formatRecoveryBytes(bytes) {
-  const count = Math.max(0, Number(bytes) || 0);
-  return count >= 1048576 ? `${(count / 1048576).toFixed(1)} MB` : `${Math.ceil(count / 1024)} KB`;
-}
-async function loadRecoveryPoints() {
-  const list = $("recovery-list");
-  const status = $("recovery-status");
-  if (!list || !status) return;
-  status.textContent = "Loading private recovery points…";
-  try {
-    const payload = await getJSON(`${API}/recovery/snapshots`);
-    const items = Array.isArray(payload.items) ? payload.items : [];
-    status.textContent = items.length ? `${items.length} latest recovery point(s) available for download.` : "No recovery points yet. Create one now; future deletions also create one automatically.";
-    list.replaceChildren();
-    for (const item of items) {
-      const row = document.createElement("div");
-      row.className = "recovery-row";
-      const details = document.createElement("div");
-      details.className = "recovery-details";
-      const title = document.createElement("strong");
-      title.textContent = item.reason || "Recovery point";
-      const sub = document.createElement("small");
-      const stamp = String(item.created_at || "").replace(/^(\d{8})T(\d{6})Z$/, "$1 $2 UTC");
-      sub.textContent = `${stamp} · ${formatRecoveryBytes(item.size_bytes)} database · ${Number(item.media_files || 0)} media files`;
-      details.append(title, sub);
-      const actions = document.createElement("div");
-      actions.className = "recovery-actions";
-      const preview = document.createElement("button");
-      preview.type = "button";
-      preview.className = "btn-secondary";
-      preview.textContent = "View contents";
-      const link = document.createElement("a");
-      link.className = "btn-secondary";
-      link.textContent = "Download backup";
-      link.href = `${API}/recovery/snapshots/${encodeURIComponent(item.name)}/archive`;
-      link.download = String(item.name).replace(/\.sqlite3$/, '-backup.zip');
-      preview.addEventListener("click", async () => {
-        preview.disabled = true;
-        try {
-          const counts = await getJSON(`${API}/recovery/snapshots/${encodeURIComponent(item.name)}/summary`);
-          sub.textContent = `${counts.products} products, ${counts.deleted_products} in Trash, ${counts.variants} sizes` +
-            (counts.supplier_invoices !== null ? `, ${counts.supplier_invoices} invoices` : "");
-        } catch (_) { sub.textContent = "Could not read snapshot summary."; }
-        finally { preview.disabled = false; }
-      });
-      actions.append(preview, link);
-      row.append(details, actions);
-      list.append(row);
-    }
-  } catch (_) {
-    status.textContent = "Unable to load private recovery points. Check your Railway volume and retry.";
-  }
-}
-$("recovery-create")?.addEventListener("click", async () => {
-  const button = $("recovery-create");
-  button.disabled = true;
-  try {
-    await apiPost(`${API}/recovery/snapshots`);
-    showToast("Recovery point safely created");
-    await loadRecoveryPoints();
-  } catch (error) { showToast(error.message || "Backup failed", "error", 2800); }
-  finally { button.disabled = false; }
-});
 
 // ---------------- Init ----------------
 const initialView = viewFromLocation();

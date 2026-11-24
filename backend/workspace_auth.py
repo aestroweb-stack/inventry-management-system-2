@@ -28,7 +28,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 from database import auth_get_db as get_db, AuthSessionLocal as SessionLocal
 from workspace_models import WorkspaceUser
@@ -441,9 +441,10 @@ async def upload_photo(request: Request, file: UploadFile = File(...), account: 
         with Image.open(io.BytesIO(content)) as picture:
             if picture.format not in ("PNG", "WEBP", "JPEG"):
                 raise HTTPException(422, "Only JPG, PNG, WEBP")
-            picture.thumbnail((2048, 2048))
+            picture = ImageOps.exif_transpose(picture)
+            picture.thumbnail((3000, 3000), Image.Resampling.LANCZOS)
             data = io.BytesIO()
-            picture.convert("RGB").save(data, "WEBP", quality=93)
+            picture.convert("RGB").save(data, "WEBP", quality=96, method=4)
     except (OSError, UnidentifiedImageError, Image.DecompressionBombError):
         raise HTTPException(422, "Invalid image")
     PHOTO_DIR.mkdir(parents=True, exist_ok=True)

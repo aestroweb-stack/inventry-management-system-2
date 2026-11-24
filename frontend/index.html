@@ -7,21 +7,21 @@
 <meta name="theme-color" content="#005446">
 <link rel="icon" href="assets/myraa-favicon.svg" type="image/svg+xml">
 <script>try{if(localStorage.getItem("inventoryTheme")==="dark")document.documentElement.dataset.theme="dark"}catch{}</script>
-<link rel="stylesheet" href="style.css?v=myraa-production-2">
+<link rel="stylesheet" href="style.css?v=nov24-r2">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-<link rel="stylesheet" href="myraa-production.css?v=2">
-<link rel="stylesheet" href="myraa-signature-v3.css?v=3">
-  <link rel="stylesheet" href="packing-picklist.css?v=4">
-  <link rel="stylesheet" href="business-workspace.css?v=2">
-  <link rel="stylesheet" href="product-challan-pages.css?v=6">
-  <link rel="stylesheet" href="seller-workspace.css?v=1">
-<link rel="stylesheet" href="workspace-auth.css?v=5">
-<link rel="stylesheet" href="clerk-auth.css?v=1">
-<link rel="stylesheet" href="myraa-ui-refresh.css?v=4">
-<link rel="stylesheet" href="myraa-accessible-v2.css?v=3">
-<link rel="stylesheet" href="myraa-premium-nav.css?v=1">
-<link rel="stylesheet" href="myraa-feedback.css?v=1">
-<link rel="stylesheet" href="myraa-fixes.css">
+<link rel="stylesheet" href="myraa-production.css?v=nov24-r2">
+<link rel="stylesheet" href="myraa-signature-v3.css?v=nov24-r2">
+  <link rel="stylesheet" href="packing-picklist.css?v=nov24-r2">
+  <link rel="stylesheet" href="business-workspace.css?v=nov24-r2">
+  <link rel="stylesheet" href="product-challan-pages.css?v=nov24-r2">
+  <link rel="stylesheet" href="seller-workspace.css?v=nov24-r2">
+<link rel="stylesheet" href="workspace-auth.css?v=nov24-r2">
+<link rel="stylesheet" href="clerk-auth.css?v=nov24-r2">
+<link rel="stylesheet" href="myraa-ui-refresh.css?v=nov24-r2">
+<link rel="stylesheet" href="myraa-accessible-v2.css?v=nov24-r2">
+<link rel="stylesheet" href="myraa-premium-nav.css?v=nov24-r2">
+<link rel="stylesheet" href="myraa-feedback.css?v=nov24-r2">
+<link rel="stylesheet" href="myraa-fixes.css?v=nov24-r2">
 </head>
 <body>
 
@@ -260,16 +260,16 @@
         <header class="cs-header"><div class="cs-title"><span class="cs-logo"><i class="fa-solid fa-receipt"></i></span><div><h2>Purchase Invoice</h2><p>Record purchases from suppliers, track received stock and push to inventory.</p></div></div>
           <div class="cs-header-actions"><button id="cs-new" class="cs-secondary" type="button"><i class="fa-regular fa-file-lines"></i> New Invoice</button><a class="cs-secondary" id="cs-export" href="/api/purchase-challans/template" download><i class="fa-solid fa-download"></i> Download Excel</a></div>
         </header>
-        <div class="cs-stats"><div class="cs-stat cs-ordered"><i class="fa-solid fa-cart-shopping"></i><span>Ordered<strong id="cs-ordered">0 pcs</strong></span></div><div class="cs-stat cs-received"><i class="fa-solid fa-cube"></i><span>Received<strong id="cs-received">0 pcs</strong></span></div><div class="cs-stat cs-pending"><i class="fa-regular fa-clock"></i><span>Pending<strong id="cs-pending">0 pcs</strong></span></div><div class="cs-stat cs-value"><i class="fa-solid fa-coins"></i><span>Goods Value<strong id="cs-value">₹0</strong></span></div></div>
-        <form id="cs-form">
+        <div class="cs-period-head"><strong>Purchase overview</strong><label>Report date <input id="cs-report-date" type="date"></label><span id="cs-report-status" role="status"></span></div><div class="cs-stats" aria-label="Saved invoices for report date"><div class="cs-stat cs-ordered"><i class="fa-solid fa-cart-shopping"></i><span>Ordered<strong id="cs-ordered">0 pcs</strong></span></div><div class="cs-stat cs-received"><i class="fa-solid fa-cube"></i><span>Received<strong id="cs-received">0 pcs</strong></span></div><div class="cs-stat cs-pending"><i class="fa-regular fa-clock"></i><span>Pending<strong id="cs-pending">0 pcs</strong></span></div><div class="cs-stat cs-value"><i class="fa-solid fa-coins"></i><span>Goods Value<strong id="cs-value">₹0</strong></span></div></div>
+        <div id="myraa-period-summary" class="myraa-period-summary" aria-live="polite"></div><form id="cs-form">
           <div class="cs-fields"><label>Supplier / Party <em>*</em><input required maxlength="180" id="cs-party" placeholder="Enter supplier name" list="cs-suppliers"><datalist id="cs-suppliers"></datalist></label><label>Invoice No. <em>*</em><input id="cs-number" maxlength="120" required placeholder="PI-2026-001"></label><label>Invoice Date <em>*</em><input id="cs-date" type="date" required></label></div>
           <div class="cs-items-head"><h3>Invoice Items</h3><button class="cs-add" type="button" id="cs-add">Add Item</button></div>
           <div id="cs-empty" class="cs-empty"><span class="cs-empty-illustration"><i class="fa-solid fa-box-open" aria-hidden="true"></i></span><h4>No items yet</h4><p>Click <strong>Add Item</strong> to start entering products. Nothing is added automatically.</p></div><div class="cs-table-wrap" id="cs-table-wrap" hidden><table class="cs-table"><thead><tr><th>#</th><th>Product Name / Master SKU</th><th>Size</th><th>Ordered</th><th>Received</th><th>Pending</th><th>Unit Cost (₹)</th><th>Total Cost (₹)</th><th>Action</th></tr></thead><tbody id="cs-rows"></tbody></table></div>
-          <div class="cs-bottom"><div class="cs-upload-area"><label class="cs-drop" for="cs-files"><i class="fa-solid fa-cloud-arrow-up"></i><strong>Attach Supplier Invoice</strong><small>PDF, JPG, PNG · Max 10 MB/file</small><input id="cs-files" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" multiple hidden></label><div class="cs-previews" id="cs-previews"></div></div><div class="cs-actions"><button type="submit" id="cs-save" class="cs-secondary"><i class="fa-solid fa-floppy-disk"></i> Save Invoice</button><button type="button" id="cs-push" class="cs-push" disabled><i class="fa-solid fa-boxes-stacked"></i><span>Push Received Stock<small>to Inventory</small></span></button></div></div>
-          <p class="cs-notice">Inventory stock updates only after a fully received invoice is saved and confirmed. Each invoice can be posted to stock once.</p><p id="cs-message" role="status" aria-live="polite" class="cs-message"></p><button type="button" id="cs-last-open" class="cs-last-open" hidden>Open saved invoice</button>
+          <p id="cs-draft-totals" class="cs-draft-totals" aria-live="polite"></p><div class="cs-bottom"><div class="cs-upload-area"><label class="cs-drop" for="cs-files"><i class="fa-solid fa-cloud-arrow-up"></i><strong>Attach Supplier Invoice</strong><small>PDF, JPG, PNG · Max 10 MB/file</small><input id="cs-files" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" multiple hidden></label><div class="cs-previews" id="cs-previews"></div></div><div class="cs-actions"><button type="submit" id="cs-save" class="cs-secondary"><i class="fa-solid fa-floppy-disk"></i> Save Invoice</button><button type="button" id="cs-push" class="cs-push" disabled><i class="fa-solid fa-boxes-stacked"></i><span>Push Received Stock<small>to Inventory</small></span></button></div></div>
+          <p class="cs-notice">Inventory stock updates only after a fully received invoice is saved and confirmed. Post once. To correct a posted quantity, open the saved invoice and choose Edit.</p><p id="cs-message" role="status" aria-live="polite" class="cs-message"></p><button type="button" id="cs-last-open" class="cs-last-open" hidden>Open saved invoice</button>
         </form>
       </section>
-      <div class="myraa-period-summary" id="myraa-period-summary" aria-live="polite">Loading daily and monthly purchase totals…</div>
+
       <div class="challan-summary" id="challan-summary"><span>Loading invoices…</span></div>
       <div class="challan-layout">
         <details class="cs-legacy-import"><summary>Import Invoice from Excel / CSV</summary>
@@ -425,7 +425,7 @@
 
     <!-- ================= TRASH ================= -->
     <section id="view-trash" class="view">
-      <header class="view-head"><div><h1>Trash</h1><p class="sub">Restore products or hide them permanently from your seller panel. Records remain protected on the server.</p></div></header>
+      <header class="view-head"><div><h1>Trash</h1><p class="sub">Restore deleted products or permanently remove them from your seller panel.</p></div></header>
       <div id="trash-list" class="card-grid"></div>
       <p id="trash-empty" class="hint center" hidden>Trash is empty.</p>
       <div class="pager"><button id="trash-prev" class="btn-secondary pager-btn" type="button">← Previous</button><span id="trash-page-info"></span><button id="trash-next" class="btn-secondary pager-btn" type="button">Next →</button></div>
@@ -515,23 +515,23 @@
   </section>
 </div>
 
-<div id="app-loading-indicator" class="app-loading-indicator" role="status" aria-live="polite" aria-label="Loading app data"><span></span></div>
+<div id="app-loading-indicator" class="app-loading-indicator" role="status" aria-live="polite" aria-label="Loading app data"><div class="myraa-loader-card"><i class="fa-solid fa-layer-group" aria-hidden="true"></i><div><strong>MYRAA</strong><small>Updating workspace…</small></div><b class="myraa-loader-ring" aria-hidden="true"></b></div></div>
 
 <!-- Rich MYRAA notifications are injected by myraa-feedback.js. -->
 <footer class="myraa-owner-footer">© 2026 <strong>Hacker Room</strong>. All rights reserved. <a href="mailto:aestroweb@gmail.com">aestroweb@gmail.com</a> · <a href="tel:+918630404031">+91 8630404031</a></footer>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
-<script src="myraa-feedback.js?v=1"></script>
-<script src="myraa-auth-gate.js?v=401-gate-1"></script>
-<script src="app.js?v=myraa-no-legacy-gate-1"></script>
-<script src="myraa-signature-v3.js?v=4"></script>
-<script src="packing-picklist.js?v=4"></script>
-<script src="business-workspace.js?v=7"></script>
-<script src="product-challan-pages.js?v=3"></script>
-<script src="myraa-challan-studio.js?v=2"></script>
-<script src="seller-sounds.js?v=1"></script>
-<script src="clerk-auth.js?v=myraa-401-gate-1"></script>
-<script src="myraa-ui-refresh.js?v=3"></script>
-<script src="myraa-premium-nav.js?v=1"></script>
+<script src="myraa-feedback.js?v=nov24-r2"></script>
+<script src="myraa-auth-gate.js?v=nov24-r2"></script>
+<script src="app.js?v=nov24-r2"></script>
+<script src="myraa-signature-v3.js?v=nov24-r2"></script>
+<script src="packing-picklist.js?v=nov24-r2"></script>
+<script src="business-workspace.js?v=nov24-r2"></script>
+<script src="product-challan-pages.js?v=nov24-r2"></script>
+<script src="myraa-challan-studio.js?v=nov24-r2"></script>
+<script src="seller-sounds.js?v=nov24-r2"></script>
+<script src="clerk-auth.js?v=nov24-r2"></script>
+<script src="myraa-ui-refresh.js?v=nov24-r2"></script>
+<script src="myraa-premium-nav.js?v=nov24-r2"></script>
 </body>
 </html>

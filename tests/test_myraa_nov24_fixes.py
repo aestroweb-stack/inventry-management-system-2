@@ -57,4 +57,24 @@ class SafePostedCorrectionTests(unittest.TestCase):
         self.assertEqual(variant.current_stock,3)
         self.assertEqual(self.db.query(models.InventoryTransaction).count(),2)
 
+    def test_three_supplier_day_totals_and_idempotent_correction(self):
+        for party, sku, qty, price in [('Supplier B','B',2,200),('Supplier C','C',5,300)]:
+            bill=create_manual_challan(ChallanDraft(party_name=party,challan_no='BILL',order_date='2026-11-24',lines=[dict(name=sku,sku=sku,size='M',qty_ordered=qty,qty_received=qty,unit_cost=price)]),db=self.db)
+            push_challan_to_inventory(bill['id'],db=self.db)
+        for _ in range(2):
+            edit_manual_challan(self.challan['id'],self.payload(3),db=self.db)
+        day=purchase_challan_summary(date_filter='2026-11-24',db=self.db)['today']
+        self.assertEqual((day['invoice_count'],day['ordered_pieces'],day['received_pieces'],day['pending_pieces'],day['ordered_value']),(3,10,10,0,2200.0))
+        self.assertEqual(self.db.query(models.InventoryTransaction).count(),4)
+        self.assertEqual(purchase_challan_summary(date_filter='2026-11-23',db=self.db)['today']['ordered_pieces'],0)
+        self.assertEqual(purchase_challan_summary(date_filter='2026-11-23',db=self.db)['month']['ordered_pieces'],10)
+
+    def test_mixed_purchase_rates_revalue_after_correction(self):
+        bill=create_manual_challan(ChallanDraft(party_name='Supplier B',challan_no='BILL',order_date='2026-11-24',lines=[dict(name='Tee',sku='TEE',size='S',qty_ordered=4,qty_received=4,unit_cost=200)]),db=self.db)
+        push_challan_to_inventory(bill['id'],db=self.db)
+        edit_manual_challan(self.challan['id'],self.payload(3),db=self.db)
+        variant=self.db.query(models.Variant).one()
+        self.assertEqual(variant.current_stock,7)
+        self.assertAlmostEqual(float(variant.cost_record.unit_cost),157.14,places=2)
+
 if __name__=='__main__':unittest.main()

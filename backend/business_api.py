@@ -13,14 +13,14 @@ from zipfile import ZipFile, ZIP_DEFLATED
 from xml.sax.saxutils import escape as xml_escape
 from PIL import Image, UnidentifiedImageError
 from collections import defaultdict
-from datetime import datetime, timezone, date
+from datetime import datetime, timezone, date, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Optional, Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form, Query
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import func, or_, case
+from sqlalchemy import func, or_, case, update
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from database import get_db, tenant_root
@@ -437,7 +437,7 @@ def list_purchase_challans(
 @router.get('/purchase-challans/summary')
 def purchase_challan_summary(date_filter: str = '', db: Session = Depends(get_db)):
     """Invoice-date totals include POSTED records; only pending is outstanding."""
-    day = date_filter or datetime.now().date().isoformat()
+    day = date_filter or datetime.now(timezone(timedelta(hours=5, minutes=30))).date().isoformat()
     try:
         datetime.strptime(day, '%Y-%m-%d')
     except ValueError as exc:
@@ -455,7 +455,6 @@ def purchase_challan_summary(date_filter: str = '', db: Session = Depends(get_db
                 'unpriced_pieces':sum(x[0] for x in lines if x[2] is None),
                 'invoice_count':db.query(PurchaseChallan).filter(PurchaseChallan.order_date >= start, PurchaseChallan.order_date < end).count()}
     d=date.fromisoformat(day)
-    from datetime import timedelta
     next_day=(d+timedelta(days=1)).isoformat()
     month_start=d.replace(day=1)
     month_end=(month_start.replace(year=month_start.year+1,month=1) if month_start.month==12 else month_start.replace(month=month_start.month+1)).isoformat()
@@ -504,7 +503,9 @@ def delete_saved_invoice_item(batch_id: int, line_id: int, db: Session = Depends
     Posted invoices cannot be modified because their quantities are in stock.
     Empty drafts remain OPEN and cannot be pushed to inventory.
     """
-    batch = db.query(PurchaseChallan).filter_by(id=batch_id).with_for_update().first()
+    # SQLite ignores FOR UPDATE. A no-op write acquires the writer lock before reading.
+    db.execute(update(PurchaseChallan).where(PurchaseChallan.id == batch_id).values(status=PurchaseChallan.status))
+    batch = db.query(PurchaseChallan).filter_by(id=batch_id).populate_existing().with_for_update().first()
     if batch is None:
         raise HTTPException(404, 'Invoice not found')
     if batch.status == 'POSTED':
@@ -533,6 +534,7 @@ def delete_saved_purchase_invoice(batch_id: int, db: Session = Depends(get_db)):
     Seller isolation is provided by get_db's tenant-scoped Session.  Posted
     stock is audit evidence and must never be removed by a delete request.
     """
+    db.execute(update(PurchaseChallan).where(PurchaseChallan.id == batch_id).values(status=PurchaseChallan.status))
     batch = (db.query(PurchaseChallan)
              .options(selectinload(PurchaseChallan.lines),
                       selectinload(PurchaseChallan.attachments))
@@ -735,6 +737,7 @@ class ReceiptUpdate(BaseModel):
 
 @router.patch("/purchase-challans/{batch_id}/receipt")
 def update_receipt(batch_id: int, payload: ReceiptUpdate, db: Session = Depends(get_db)):
+    db.execute(update(PurchaseChallan).where(PurchaseChallan.id == batch_id).values(status=PurchaseChallan.status))
     batch = db.query(PurchaseChallan).options(selectinload(PurchaseChallan.lines)).filter_by(id=batch_id).first()
     if not batch:
         raise HTTPException(404, "Invoice not found")
@@ -759,7 +762,8 @@ def update_receipt(batch_id: int, payload: ReceiptUpdate, db: Session = Depends(
 
 @router.post("/purchase-challans/{batch_id}/push")
 def push_challan_to_inventory(batch_id: int, db: Session = Depends(get_db)):
-    batch = db.query(PurchaseChallan).filter_by(id=batch_id).with_for_update().first()
+    db.execute(update(PurchaseChallan).where(PurchaseChallan.id == batch_id).values(status=PurchaseChallan.status))
+    batch = db.query(PurchaseChallan).filter_by(id=batch_id).populate_existing().with_for_update().first()
     if not batch:
         raise HTTPException(404, "Invoice not found")
     if batch.status == "POSTED":
@@ -876,7 +880,8 @@ def create_manual_challan(payload: ChallanDraft, db: Session=Depends(get_db)):
 
 @router.put('/purchase-challans/{batch_id}/manual')
 def edit_manual_challan(batch_id:int,payload:ChallanDraft,db:Session=Depends(get_db)):
-    batch=db.query(PurchaseChallan).filter_by(id=batch_id).with_for_update().first()
+    db.execute(update(PurchaseChallan).where(PurchaseChallan.id == batch_id).values(status=PurchaseChallan.status))
+    batch=db.query(PurchaseChallan).filter_by(id=batch_id).populate_existing().with_for_update().first()
     if batch is None:raise HTTPException(404,'Invoice not found')
     if batch.status == 'POSTED':
         # Reconcile quantities, not the original stock push. Other receipts and
@@ -902,16 +907,31 @@ def edit_manual_challan(batch_id:int,payload:ChallanDraft,db:Session=Depends(get
                     models.Product.is_deleted.is_(False), models.Variant.is_deleted.is_(False)).first()
                 if variant is None:
                     raise HTTPException(409, f'{key}: active inventory size not found')
-                if delta < 0:
-                    # The existing stock ledger cannot identify which specific
-                    # receipt was dispatched. Refuse rather than claim returned
-                    # goods or silently overstate stock after fulfillment.
-                    dispatched = db.query(models.InventoryTransaction).filter(
-                        models.InventoryTransaction.variant_id == variant.id,
-                        models.InventoryTransaction.transaction_type == models.TransactionType.ORDER_DEDUCTION,
-                        models.InventoryTransaction.created_at >= batch.posted_at).first()
-                    if dispatched:
-                        raise HTTPException(409, f'{key}: orders were dispatched after this stock push. Quantity reversal is blocked to protect sold stock; use a reviewed stock adjustment.')
+                # Find the original receipt in the ledger, not the coarse timestamp.
+                receipt = db.query(models.InventoryTransaction).filter_by(
+                    variant_id=variant.id, reference=f'purchase_challan:{batch.id}:{batch.challan_no}',
+                    transaction_type=models.TransactionType.RESTOCK).order_by(models.InventoryTransaction.id).first()
+                if receipt is None:
+                    raise HTTPException(409, 'Original purchase receipt not found in stock ledger; manual review required.')
+                later = db.query(models.InventoryTransaction).filter(
+                    models.InventoryTransaction.variant_id == variant.id,
+                    models.InventoryTransaction.id > receipt.id,
+                    models.InventoryTransaction.transaction_type.in_([
+                        models.TransactionType.ORDER_DEDUCTION, models.TransactionType.MANUAL_ADJUSTMENT,
+                        models.TransactionType.AI_PHOTO_UPDATE, models.TransactionType.INITIAL_STOCK]),
+                    or_(models.InventoryTransaction.reference.is_(None),
+                        ~models.InventoryTransaction.reference.like('purchase_challan_correction:%'))).first()
+                if later:
+                    raise HTTPException(409, f'{key}: stock was dispatched or recounted after posting. Correction blocked to protect physical stock; review the ledger.')
+                # Reconcile both units and moving-average inventory valuation.
+                old_qty = int(variant.current_stock)
+                next_qty = old_qty + delta
+                old_cost = variant.cost_record.unit_cost if variant.cost_record else (variant.product.cost_record.unit_cost if variant.product.cost_record else None)
+                if next_qty < 0 or (old_qty and old_cost is None):
+                    raise HTTPException(409, f'{key}: insufficient or unpriced available stock; review the ledger.')
+                new_value = Decimal(old_qty) * (old_cost or Decimal('0')) + Decimal(delta) * original.unit_cost
+                if new_value < Decimal('-0.01'):
+                    raise HTTPException(409, f'{key}: valuation would be negative; review the ledger.')
                 try:
                     inventory_service.apply_stock_change(db, variant, delta,
                         transaction_type=models.TransactionType.MANUAL_ADJUSTMENT,
@@ -919,6 +939,9 @@ def edit_manual_challan(batch_id:int,payload:ChallanDraft,db:Session=Depends(get
                         created_by='posted_challan_correction')
                 except inventory_service.InsufficientStockError as exc:
                     raise HTTPException(409, str(exc)) from exc
+                if next_qty:
+                    upsert_variant_cost(db, variant.id, (max(new_value, Decimal('0')) / Decimal(next_qty)).quantize(Decimal('0.01')))
+                    db.flush()
                 alert_service.check_variant_alert(db, variant)
             for key, line in new.items():
                 original = old[key]

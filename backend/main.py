@@ -115,6 +115,14 @@ async def authenticated_seller_workspace(request: Request, call_next):
     queries and filesystem assets are scoped to the Clerk-verified account.
     """
     path = request.url.path
+    # Never serve stale application code or conditional 304 responses after deploy.
+    if path == "/app" or path.startswith("/app/"):
+        if path.endswith((".js", ".css", ".html")) or path in ("/app", "/app/"):
+            request.scope["headers"] = [(k, v) for k, v in request.scope["headers"] if k not in (b"if-none-match", b"if-modified-since")]
+            response = await call_next(request)
+            response.headers["Cache-Control"] = "no-store, max-age=0"
+            response.headers["X-MYRAA-Release"] = "nov24-r2"
+            return response
     # The public StaticFiles mount must never serve a legacy/global product
     # photo from a nested path that bypasses the seller-specific image route.
     if path.startswith('/static/product_images/'):
@@ -128,6 +136,8 @@ async def authenticated_seller_workspace(request: Request, call_next):
         '/api/workspace-auth/me/photo', '/api/workspace-auth/logout'):
         return JSONResponse({'detail':'Use Clerk Google/email/password/OTP login'},status_code=410)
     account = account_from_request(request)
+    if path.startswith("/api/recovery/"):
+        return JSONResponse({"detail": "Recovery is managed on the server"}, status_code=404)
     restricted = (path.startswith('/api/') and not path.startswith(('/api/clerk/', '/api/workspace-auth/'))) or path.startswith(('/api/workspace-auth/me', '/api/workspace-auth/logout'))
     if (restricted and path not in ('/api/auth/status','/api/auth/login','/api/auth/logout','/api/health')) or path.startswith('/static/product_images/'):
         if account is None:
@@ -149,7 +159,10 @@ async def authenticated_seller_workspace(request: Request, call_next):
             except Exception:
                 logger.exception("Unable to create pre-delete recovery point")
                 return JSONResponse({"detail": "Unable to create recovery point. Delete was cancelled; check persistent volume storage."}, status_code=503)
-        return await call_next(request)
+        response = await call_next(request)
+        if path.startswith("/api/"):
+            response.headers["Cache-Control"] = "private, no-store"
+        return response
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
@@ -208,7 +221,9 @@ def auth_logout_deprecated():
 
 
 @app.get("/api/health")
-def health():
+def health(response: Response):
+    response.headers["X-MYRAA-Release"] = "nov24-r2"
+    response.headers["Cache-Control"] = "no-store"
     return {"status": "ok"}
 
 
@@ -1109,8 +1124,8 @@ def delete_product(sku: str, db: Session = Depends(get_db)):
 @app.post("/api/products/{sku}/restore", response_model=schemas.RestoreResult)
 def restore_product(sku: str, db: Session = Depends(get_db)):
     product = _get_product_by_sku(db, sku, include_deleted=True)
-    if not product.is_deleted:
-        raise HTTPException(400, f"'{sku}' is not in Trash.")
+    if not product.is_deleted or db.query(business_models.HiddenTrashProduct).filter_by(product_id=product.id).first():
+        raise HTTPException(404, "Product is not in seller Trash.")
     product.is_deleted = False
     product.deleted_at = None
     count = 0
@@ -1152,6 +1167,8 @@ def delete_variant(variant_code: str, db: Session = Depends(get_db)):
 @app.post("/api/variants/{variant_code}/restore", response_model=schemas.RestoreResult)
 def restore_variant(variant_code: str, db: Session = Depends(get_db)):
     variant = _get_variant_by_code(db, variant_code, include_deleted=True)
+    if db.query(business_models.HiddenTrashProduct).filter_by(product_id=variant.product_id).first():
+        raise HTTPException(404, "Product is not in seller Trash.")
     if not variant.is_deleted:
         raise HTTPException(400, f"'{variant_code}' is not in Trash.")
     variant.is_deleted = False

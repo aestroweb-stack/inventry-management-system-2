@@ -15,7 +15,7 @@
     if (el) el.textContent = message || '';
   };
   const request = async (url, method='GET', body) => {
-    const opt = {method, credentials:'same-origin', headers: {}};
+    const opt = {method, credentials:'same-origin', cache:'no-store', headers: {}};
     if (body !== undefined) { opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body); }
     const resp = await fetch(url,opt);
     const data = await resp.json().catch(()=>({}));
@@ -34,6 +34,7 @@
     return resp.publishableKey;
   };
   let clerk, account=null, exchangeInFlight=null;
+  let profileDirty=false, profileBusy=false, profileReadVersion=0;
   const publicRoot = () => String(location.origin);
   const fetchStatus=()=>request('/api/workspace-auth/status');
   async function startClerk() {
@@ -85,7 +86,7 @@
           // Release queued dashboard requests only after the backend has
           // set BOTH the signed session and Clerk-bound HttpOnly cookies.
           window.myraaAuthGate?.ready();
-          request('/api/workspace-auth/me').then(profile=>{account=profile;refreshAppProfile(profile);if(document.querySelector('#view-profile')?.classList.contains('is-active'))showProfile(profile);}).catch(()=>{});
+          if(account && document.querySelector('#view-profile')?.classList.contains('is-active') && !profileDirty && !profileBusy) showProfile(account);
         }
       } else {
         await removeBackendSession();
@@ -98,7 +99,14 @@
   function refreshAppProfile(user) {
     if (!user) return;
     const avatar=$('workspace-user-profile');
-    if(avatar) {const initial=avatar.querySelector('.workspace-avatar-initial'); if(initial)initial.textContent=(user.display_name || 'M').charAt(0).toUpperCase(); else avatar.textContent=(user.display_name || 'M').charAt(0).toUpperCase();const existing=avatar.querySelector('.myraa-nav-profile-photo');if(existing)existing.remove();if(user.photo_url){const img=document.createElement('img');img.className='myraa-nav-profile-photo';img.alt='';img.src=user.photo_url+'?v='+Date.now();avatar.prepend(img);avatar.classList.add('has-profile-photo');}else avatar.classList.remove('has-profile-photo');avatar.title=`${user.display_name} · ${user.role}`;}
+    if(avatar) {
+      const initial=avatar.querySelector('.workspace-avatar-initial');
+      if(initial){
+        initial.textContent=(user.display_name || 'M').charAt(0).toUpperCase();
+        if(user.photo_url){const img=document.createElement('img');img.className='myraa-nav-profile-photo';img.alt='';img.src=user.photo_url+'?v='+Date.now();img.onerror=()=>{img.remove();};initial.append(img);}
+      }
+      avatar.title=`${user.display_name} · ${user.role}`;
+    }
     const name=$('workspace-user-name');if(name)name.textContent=user.display_name||'My account';
     if($('logout-button')) $('logout-button').hidden=false;
     window.dispatchEvent(new CustomEvent('myraa:account', { detail: { name:user.display_name||'My account', email:user.email||'' } }));
@@ -304,33 +312,37 @@
     $('logout-button')?.addEventListener('click',e=>{e.preventDefault();signOut().catch(err=>statusLine(err.message));});
     $('workspace-profile-logout')?.addEventListener('click',()=>signOut().catch(err=>window.MYRAAUI.error(err.message)));
     async function openSellerProfile(){
-      document.querySelector('.rail-link[data-view="profile"]')?.click();
-      try {showProfile(await request('/api/workspace-auth/me'));}catch(e){statusLine(e.message);}
+      const version=++profileReadVersion;
+      const el=$('workspace-profile-message');
+      if(profileDirty||profileBusy)return;
+      try {const profile=await request('/api/workspace-auth/me');if(version!==profileReadVersion||profileDirty||profileBusy)return;account=profile;showProfile(profile);refreshAppProfile(profile);if(el)el.textContent='';}catch(e){if(el)el.textContent=e.message;}
     }
-    // Topbar account trigger opens the accessible dropdown; profile link below retains the data loader.
-    $('workspace-profile-link')?.addEventListener('click',openSellerProfile);
-    document.querySelectorAll('.rail-link[data-view="profile"]').forEach(link=>{if(link.id!=='workspace-profile-link')link.addEventListener('click',openSellerProfile);});
-    window.addEventListener('popstate',()=>{if(document.querySelector('#view-profile')?.classList.contains('is-active'))request('/api/workspace-auth/me').then(showProfile).catch(()=>{});});
-    if(document.querySelector('#view-profile')?.classList.contains('is-active'))request('/api/workspace-auth/me').then(showProfile).catch(()=>{});
+    window.addEventListener('myraa:view',event=>{if(event.detail==='profile')openSellerProfile();});
+    if(document.querySelector('#view-profile')?.classList.contains('is-active'))openSellerProfile();
+    $('workspace-profile-form')?.addEventListener('input',e=>{if(e.target.type!=='file')profileDirty=true;});
     $('workspace-profile-close')?.addEventListener('click',()=>document.querySelector('.rail-link[data-view="dashboard"]')?.click());
     $('workspace-profile-form')?.addEventListener('submit',async e=>{
       e.preventDefault();
+      if(profileBusy)return;profileBusy=true;++profileReadVersion;
       const el=$('workspace-profile-message');if(el)el.textContent='Saving profile…';
       try {
         const profile=await request('/api/workspace-auth/me','PATCH',{
           display_name:$('workspace-profile-name').value,business_name:$('workspace-profile-business').value,
           phone:$('workspace-profile-phone').value,address:$('workspace-profile-address').value});
-        showProfile(profile);refreshAppProfile(profile);if(el)el.textContent='Profile saved.';
-      } catch(err){if(el)el.textContent=err.message;}
+        account=profile;profileDirty=false;showProfile(profile);refreshAppProfile(profile);if(el)el.textContent='Profile saved.';
+      } catch(err){if(el)el.textContent=err.message;}finally{profileBusy=false;}
     });
     $('workspace-profile-image')?.addEventListener('change',async e=>{
       const file=e.target.files?.[0];if(!file)return;
+      if(profileBusy){e.target.value='';return;}
+      if(file.size>10_000_000){window.MYRAAUI.error('Photo must be 10 MB or smaller.');e.target.value='';return;}
+      profileBusy=true;++profileReadVersion;
       const el=$('workspace-profile-message');if(el)el.textContent='Uploading photo…';
       try {const body=new FormData();body.append('file',file);
         const r=await fetch('/api/workspace-auth/me/photo',{method:'POST',body,credentials:'same-origin'});
         const result=await r.json().catch(()=>({}));if(!r.ok)throw new Error(result.detail||`HTTP ${r.status}`);
-        const profile=await request('/api/workspace-auth/me');showProfile(profile);refreshAppProfile(profile);if(el)el.textContent='Photo uploaded.';
-      }catch(err){if(el)el.textContent=err.message;}finally{e.target.value='';}
+        const profile=await request('/api/workspace-auth/me');account=profile;if(!profileDirty)showProfile(profile);else showProfilePhoto(profile);refreshAppProfile(profile);if(el)el.textContent='Photo uploaded.';
+      }catch(err){if(el)el.textContent=err.message;}finally{profileBusy=false;e.target.value='';}
     });
   }
   function showProfile(user) {
@@ -340,8 +352,11 @@
       const element=$(id);if(element) element.value=value||'';
     }
     if($('workspace-profile-role')) $('workspace-profile-role').textContent=`Private Seller Workspace · ${user.role}`;
-    const photo=$('workspace-profile-preview');if(photo){photo.hidden=!user.photo_url;if(user.photo_url)photo.src=user.photo_url+'?v='+Date.now();}
-    const fallback=$('workspace-photo-empty');if(fallback)fallback.hidden=!!user.photo_url;
+    showProfilePhoto(user);
+  }
+  function showProfilePhoto(user){
+    const photo=$('workspace-profile-preview'),fallback=$('workspace-photo-empty');if(photo){photo.hidden=!user.photo_url;photo.onerror=()=>{photo.hidden=true;if(fallback)fallback.hidden=false;};if(user.photo_url)photo.src=user.photo_url+'?v='+Date.now();else photo.removeAttribute('src');}
+    if(fallback)fallback.hidden=!!user.photo_url;
   }
   const startup=loginPage?initLoginPage:initAppPage;
   startup().catch(error=>{

@@ -56,6 +56,13 @@
     });
   };
 
+  window.myraaRefreshDetailValuation = (product,container) => {
+    const block=container.querySelector('.business-product-card');if(!block)return;
+    const report=block.querySelector('.business-size-report');
+    report.querySelectorAll('.business-size-summary').forEach(el=>el.remove());
+    for(const v of product.variants){const line=document.createElement('div');line.className='business-size-summary';line.innerHTML=`<b>${E(v.size)}</b><span>${Number(v.current_stock||0).toLocaleString('en-IN')} pcs</span><strong>${v.cost_value==null?'Cost not set':money(v.cost_value)}</strong>`;report.append(line);}
+    block.querySelector('.business-v2-head p b').textContent=money(product.stock_cost_value);
+  };
   window.myraaEnhanceProductDetail = (product, container) => {
     const seatGrid = container.querySelector('.seat-grid');
     if (!seatGrid) return;
@@ -263,9 +270,28 @@
     const fd=new FormData();Array.from(files).forEach(f=>fd.append('files',f));
     return json(`/api/purchase-challans/${batchId}/attachments`,{method:'POST',body:fd});
   }
+  let reportVersion=0;
+  const reportDate=$('cs-report-date');
+  if(reportDate)reportDate.value=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
+  async function refreshPurchaseReport(){
+    const version=++reportVersion,host=$('myraa-period-summary'),status=$('cs-report-status');
+    const chosen=reportDate?.value;if(!chosen||!host)return;
+    if(status)status.textContent='Loading…';
+    try{
+      const period=await json('/api/purchase-challans/summary?date_filter='+encodeURIComponent(chosen),{cache:'no-store'});
+      if(version!==reportVersion)return;
+      const d=period.today,pcs=n=>Number(n).toLocaleString('en-IN')+' pcs';
+      $('cs-ordered').textContent=pcs(d.ordered_pieces);$('cs-received').textContent=pcs(d.received_pieces);$('cs-pending').textContent=pcs(d.pending_pieces);$('cs-value').textContent=money(d.ordered_value);
+      const tile=(label,t)=>`<article class="myraa-period-tile"><small>${label} · ${t.invoice_count} invoices</small><strong>${pcs(t.ordered_pieces)} · ${money(t.ordered_value)}</strong><span>Received ${pcs(t.received_pieces)} · Pending ${pcs(t.pending_pieces)} · Received cost ${money(t.received_value)}</span>${t.unpriced_pieces?`<small>${t.unpriced_pieces} pcs without a cost</small>`:''}</article>`;
+      host.innerHTML=tile('Selected day '+E(chosen),d)+tile('Selected month',period.month)+tile('All time',period.all_time);
+      if(status)status.textContent='Saved invoices · including posted';
+    }catch(err){if(version!==reportVersion)return;if(status)status.textContent='Report unavailable: '+err.message;for(const id of ['cs-ordered','cs-received','cs-pending','cs-value'])$(id).textContent='—';host.textContent='Could not load purchase totals.';}
+  }
+  reportDate?.addEventListener('change',refreshPurchaseReport);
+  window.myraaRefreshPurchaseReport=refreshPurchaseReport;
   async function loadChallans() {
     const listing=$('challan-batches'),summary=$('challan-summary');
-    const periodLoading=$('myraa-period-summary');if(periodLoading)periodLoading.innerHTML='<span class="myraa-load-spinner" aria-hidden="true"></span>Refreshing purchase totals…';
+
     try {
       const version=++requestVersion;
       const query=new URLSearchParams({q:($('challan-search')?.value||'').trim(),date_filter:$('challan-filter-date')?.value||'',limit:String(PAGE_SIZE),offset:String(challanPage*PAGE_SIZE)});
@@ -276,14 +302,8 @@
         <div><small>Received</small><strong>${Number(data.received_pieces||0).toLocaleString('en-IN')} pcs</strong></div>
         <div><small>Pending</small><strong>${Number(data.pending_pieces).toLocaleString('en-IN')} pcs</strong></div>
         <div><small>Known received goods value</small><strong>${money(data.received_value_known)}</strong>${data.received_unpriced_pieces?`<small>${data.received_unpriced_pieces} received pcs need cost</small>`:''}</div>`;
-      const periodHost=$('myraa-period-summary');
-      if(periodHost){
-        const chosen=$('challan-filter-date')?.value||new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
-        const period=await json('/api/purchase-challans/summary?date_filter='+encodeURIComponent(chosen));
-        if(version!==requestVersion)return;
-        const tile=(label,t)=>`<article class="myraa-period-tile"><small>${label} · ${t.invoice_count} invoices</small><strong>${Number(t.ordered_pieces).toLocaleString('en-IN')} pcs · ${money(t.ordered_value)}</strong><span>Received ${t.received_pieces} · Pending ${t.pending_pieces} · Received cost ${money(t.received_value)}</span></article>`;
-        periodHost.innerHTML=tile('Selected day '+chosen,period.today)+tile('This month',period.month)+tile('All time',period.all_time);
-      }
+      // Records and report are independent: a failed report must not disable invoice editing.
+      refreshPurchaseReport();
       challanRows=data.items||[];
       challanTotal=Number(data.total||0);
       renderChallanList();
