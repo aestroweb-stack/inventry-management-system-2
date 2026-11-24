@@ -21,6 +21,7 @@
 <link rel="stylesheet" href="myraa-accessible-v2.css?v=3">
 <link rel="stylesheet" href="myraa-premium-nav.css?v=1">
 <link rel="stylesheet" href="myraa-feedback.css?v=1">
+<link rel="stylesheet" href="myraa-fixes.css">
 </head>
 <body>
 
@@ -88,7 +89,7 @@
   <div class="workspace-profile-card panel">
     <div class="workspace-profile-head"><h2><i class="fa-solid fa-id-card"></i> Seller Profile</h2><button type="button" id="workspace-profile-close" class="btn-secondary" aria-label="Back to dashboard">← Dashboard</button></div>
     <form id="workspace-profile-form" class="workspace-auth-form">
-      <div class="workspace-profile-photo-row"><img id="workspace-profile-preview" alt="Your profile photo" hidden><span class="workspace-photo-empty" id="workspace-photo-empty" aria-hidden="true"><i class="fa-solid fa-user"></i></span><label class="btn-secondary">Upload photo<input id="workspace-profile-image" type="file" accept="image/jpeg,image/png,image/webp" hidden></label></div>
+      <div class="workspace-profile-photo-row"><img id="workspace-profile-preview" alt="Your profile photo" hidden><span class="workspace-photo-empty" id="workspace-photo-empty" aria-hidden="true"><i class="fa-solid fa-user"></i></span><label class="btn-secondary">Upload photo<input id="workspace-profile-image" type="file" accept="image/jpeg,image/png,image/webp" hidden></label><small>Max 10 MB · high-resolution upload</small></div>
       <label>Login ID<input id="workspace-profile-login" readonly></label>
       <label>Email address<input id="workspace-profile-email" readonly></label>
       <div class="workspace-form-pair"><label>Full name<input id="workspace-profile-name" required maxlength="160"></label><label>Seller / business<input id="workspace-profile-business" maxlength="180"></label></div>
@@ -268,6 +269,7 @@
           <p class="cs-notice">Inventory stock updates only after a fully received invoice is saved and confirmed. Each invoice can be posted to stock once.</p><p id="cs-message" role="status" aria-live="polite" class="cs-message"></p><button type="button" id="cs-last-open" class="cs-last-open" hidden>Open saved invoice</button>
         </form>
       </section>
+      <div class="myraa-period-summary" id="myraa-period-summary" aria-live="polite">Loading daily and monthly purchase totals…</div>
       <div class="challan-summary" id="challan-summary"><span>Loading invoices…</span></div>
       <div class="challan-layout">
         <details class="cs-legacy-import"><summary>Import Invoice from Excel / CSV</summary>
@@ -423,16 +425,11 @@
 
     <!-- ================= TRASH ================= -->
     <section id="view-trash" class="view">
-      <header class="view-head"><div><h1>Trash &amp; Recovery</h1><p class="sub">Restore deleted products and download private recovery points for historical inventory data.</p></div></header>
+      <header class="view-head"><div><h1>Trash</h1><p class="sub">Restore products or hide them permanently from your seller panel. Records remain protected on the server.</p></div></header>
       <div id="trash-list" class="card-grid"></div>
       <p id="trash-empty" class="hint center" hidden>Trash is empty.</p>
       <div class="pager"><button id="trash-prev" class="btn-secondary pager-btn" type="button">← Previous</button><span id="trash-page-info"></span><button id="trash-next" class="btn-secondary pager-btn" type="button">Next →</button></div>
-      <section class="panel recovery-panel" aria-labelledby="recovery-title">
-        <div class="recovery-head"><div><h2 id="recovery-title"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> Seller Data Recovery</h2><p class="hint">MYRAA saves a private, consistent database recovery point before deletions. You can review and download your own backups below.</p></div><button id="recovery-create" type="button" class="btn-primary"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Create recovery point</button></div>
-        <p class="recovery-notice"><i class="fa-solid fa-circle-info" aria-hidden="true"></i> Products can be restored directly above. Other historical records can be downloaded for assisted recovery; replacing a live database is not automatic. Save copies off-server too.</p>
-        <div id="recovery-status" class="hint" aria-live="polite"></div>
-        <div id="recovery-list" class="recovery-list" aria-live="polite"></div>
-      </section>
+
     </section>
 
   </main>

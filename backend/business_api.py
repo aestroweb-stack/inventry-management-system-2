@@ -434,6 +434,35 @@ def list_purchase_challans(
             "pending_unpriced_pieces": int(pending_unpriced or 0)}
 
 
+@router.get('/purchase-challans/summary')
+def purchase_challan_summary(date_filter: str = '', db: Session = Depends(get_db)):
+    """Invoice-date totals include POSTED records; only pending is outstanding."""
+    day = date_filter or datetime.now().date().isoformat()
+    try:
+        datetime.strptime(day, '%Y-%m-%d')
+    except ValueError as exc:
+        raise HTTPException(422, 'Date must be YYYY-MM-DD') from exc
+    def totals(start, end):
+        q = db.query(PurchaseChallanLine).join(PurchaseChallan)
+        q = q.filter(PurchaseChallan.order_date >= start, PurchaseChallan.order_date < end)
+        lines = q.with_entities(PurchaseChallanLine.qty_ordered, PurchaseChallanLine.qty_received,
+            PurchaseChallanLine.unit_cost, PurchaseChallan.status).all()
+        return {'ordered_pieces':sum(x[0] for x in lines),
+                'received_pieces':sum(x[1] for x in lines),
+                'pending_pieces':sum(max(0,x[0]-x[1]) for x in lines if x[3] != 'POSTED'),
+                'ordered_value':float(sum(Decimal(x[0])*x[2] for x in lines if x[2] is not None)),
+                'received_value':float(sum(Decimal(x[1])*x[2] for x in lines if x[2] is not None)),
+                'unpriced_pieces':sum(x[0] for x in lines if x[2] is None),
+                'invoice_count':db.query(PurchaseChallan).filter(PurchaseChallan.order_date >= start, PurchaseChallan.order_date < end).count()}
+    d=date.fromisoformat(day)
+    from datetime import timedelta
+    next_day=(d+timedelta(days=1)).isoformat()
+    month_start=d.replace(day=1)
+    month_end=(month_start.replace(year=month_start.year+1,month=1) if month_start.month==12 else month_start.replace(month=month_start.month+1)).isoformat()
+    return {'date':day,'today':totals(day,next_day),'month':totals(month_start.isoformat(),month_end),
+            'all_time':totals('0001-01-01','9999-12-31')}
+
+
 @router.get("/purchase-challans/template")
 def download_challan_template():
     rows = [["Product Name", "Size", "Qty"], ["URVISHA RED", "S", 20], ["URVISHA RED", "M", 25]]
@@ -849,7 +878,63 @@ def create_manual_challan(payload: ChallanDraft, db: Session=Depends(get_db)):
 def edit_manual_challan(batch_id:int,payload:ChallanDraft,db:Session=Depends(get_db)):
     batch=db.query(PurchaseChallan).filter_by(id=batch_id).with_for_update().first()
     if batch is None:raise HTTPException(404,'Invoice not found')
-    if batch.status=='POSTED':raise HTTPException(409,'Stock has already been posted; this invoice cannot be edited')
+    if batch.status == 'POSTED':
+        # Reconcile quantities, not the original stock push. Other receipts and
+        # marketplace deductions must never be reversed as part of this edit.
+        lines = _draft_lines(db, payload)
+        current = db.query(PurchaseChallanLine).filter_by(challan_id=batch_id).order_by(PurchaseChallanLine.id).all()
+        old = {(line.sku, line.size): line for line in current}
+        new = {(line['sku'], line['size']): line for line in lines}
+        if old.keys() != new.keys():
+            raise HTTPException(409, 'Posted invoice products/sizes cannot be removed or renamed. Edit quantities on the existing lines.')
+        if any(line['qty_received'] != line['qty_ordered'] or line['unit_cost'] is None for line in lines):
+            raise HTTPException(409, 'Posted invoice corrections must remain fully received and costed.')
+        try:
+            for key, line in new.items():
+                original = old[key]
+                if line['unit_cost'] != original.unit_cost:
+                    raise HTTPException(409, 'Changing a posted unit cost requires a separate valuation adjustment; quantity corrections only.')
+                delta = line['qty_received'] - original.qty_received
+                if not delta:
+                    continue
+                variant = db.query(models.Variant).join(models.Product).filter(
+                    models.Product.sku == key[0], models.Variant.size == key[1],
+                    models.Product.is_deleted.is_(False), models.Variant.is_deleted.is_(False)).first()
+                if variant is None:
+                    raise HTTPException(409, f'{key}: active inventory size not found')
+                if delta < 0:
+                    # The existing stock ledger cannot identify which specific
+                    # receipt was dispatched. Refuse rather than claim returned
+                    # goods or silently overstate stock after fulfillment.
+                    dispatched = db.query(models.InventoryTransaction).filter(
+                        models.InventoryTransaction.variant_id == variant.id,
+                        models.InventoryTransaction.transaction_type == models.TransactionType.ORDER_DEDUCTION,
+                        models.InventoryTransaction.created_at >= batch.posted_at).first()
+                    if dispatched:
+                        raise HTTPException(409, f'{key}: orders were dispatched after this stock push. Quantity reversal is blocked to protect sold stock; use a reviewed stock adjustment.')
+                try:
+                    inventory_service.apply_stock_change(db, variant, delta,
+                        transaction_type=models.TransactionType.MANUAL_ADJUSTMENT,
+                        reference=f'purchase_challan_correction:{batch.id}:{batch.challan_no}',
+                        created_by='posted_challan_correction')
+                except inventory_service.InsufficientStockError as exc:
+                    raise HTTPException(409, str(exc)) from exc
+                alert_service.check_variant_alert(db, variant)
+            for key, line in new.items():
+                original = old[key]
+                original.qty_ordered = line['qty_ordered']
+                original.qty_received = line['qty_received']
+                original.name = line['name']
+            batch.party_name=payload.party_name.strip()
+            batch.invoice_no=payload.invoice_no.strip()
+            # Keep the original bill identity and date for auditability.
+            if batch.challan_no != payload.challan_no.strip() or batch.order_date != payload.order_date:
+                raise HTTPException(409, 'Posted invoice number/date cannot change; correct quantities only.')
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+        return serialize_challan(db.query(PurchaseChallan).options(selectinload(PurchaseChallan.lines)).filter_by(id=batch.id).one())
     party=payload.party_name.strip();number=payload.challan_no.strip()
     if not party or not number:raise HTTPException(422,'Supplier and invoice reference number are required')
     duplicate=db.query(PurchaseChallan).filter(func.upper(PurchaseChallan.party_name)==party.upper(),func.upper(PurchaseChallan.challan_no)==number.upper(),PurchaseChallan.id!=batch_id).first()

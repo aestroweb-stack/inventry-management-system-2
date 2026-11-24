@@ -85,6 +85,7 @@
           // Release queued dashboard requests only after the backend has
           // set BOTH the signed session and Clerk-bound HttpOnly cookies.
           window.myraaAuthGate?.ready();
+          request('/api/workspace-auth/me').then(profile=>{account=profile;refreshAppProfile(profile);if(document.querySelector('#view-profile')?.classList.contains('is-active'))showProfile(profile);}).catch(()=>{});
         }
       } else {
         await removeBackendSession();
@@ -97,7 +98,7 @@
   function refreshAppProfile(user) {
     if (!user) return;
     const avatar=$('workspace-user-profile');
-    if(avatar) {const initial=avatar.querySelector('.workspace-avatar-initial'); if(initial)initial.textContent=(user.display_name || 'M').charAt(0).toUpperCase(); else avatar.textContent=(user.display_name || 'M').charAt(0).toUpperCase();avatar.title=`${user.display_name} · ${user.role}`;}
+    if(avatar) {const initial=avatar.querySelector('.workspace-avatar-initial'); if(initial)initial.textContent=(user.display_name || 'M').charAt(0).toUpperCase(); else avatar.textContent=(user.display_name || 'M').charAt(0).toUpperCase();const existing=avatar.querySelector('.myraa-nav-profile-photo');if(existing)existing.remove();if(user.photo_url){const img=document.createElement('img');img.className='myraa-nav-profile-photo';img.alt='';img.src=user.photo_url+'?v='+Date.now();avatar.prepend(img);avatar.classList.add('has-profile-photo');}else avatar.classList.remove('has-profile-photo');avatar.title=`${user.display_name} · ${user.role}`;}
     const name=$('workspace-user-name');if(name)name.textContent=user.display_name||'My account';
     if($('logout-button')) $('logout-button').hidden=false;
     window.dispatchEvent(new CustomEvent('myraa:account', { detail: { name:user.display_name||'My account', email:user.email||'' } }));
@@ -308,6 +309,9 @@
     }
     // Topbar account trigger opens the accessible dropdown; profile link below retains the data loader.
     $('workspace-profile-link')?.addEventListener('click',openSellerProfile);
+    document.querySelectorAll('.rail-link[data-view="profile"]').forEach(link=>{if(link.id!=='workspace-profile-link')link.addEventListener('click',openSellerProfile);});
+    window.addEventListener('popstate',()=>{if(document.querySelector('#view-profile')?.classList.contains('is-active'))request('/api/workspace-auth/me').then(showProfile).catch(()=>{});});
+    if(document.querySelector('#view-profile')?.classList.contains('is-active'))request('/api/workspace-auth/me').then(showProfile).catch(()=>{});
     $('workspace-profile-close')?.addEventListener('click',()=>document.querySelector('.rail-link[data-view="dashboard"]')?.click());
     $('workspace-profile-form')?.addEventListener('submit',async e=>{
       e.preventDefault();
@@ -325,7 +329,7 @@
       try {const body=new FormData();body.append('file',file);
         const r=await fetch('/api/workspace-auth/me/photo',{method:'POST',body,credentials:'same-origin'});
         const result=await r.json().catch(()=>({}));if(!r.ok)throw new Error(result.detail||`HTTP ${r.status}`);
-        showProfile(await request('/api/workspace-auth/me'));if(el)el.textContent='Photo uploaded.';
+        const profile=await request('/api/workspace-auth/me');showProfile(profile);refreshAppProfile(profile);if(el)el.textContent='Photo uploaded.';
       }catch(err){if(el)el.textContent=err.message;}finally{e.target.value='';}
     });
   }

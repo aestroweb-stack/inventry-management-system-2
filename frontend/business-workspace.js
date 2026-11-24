@@ -205,7 +205,7 @@
     const listing=$('challan-batches');if(!listing)return;
     const page=challanRows;
     const totalPages=Math.max(1,Math.ceil(challanTotal/PAGE_SIZE));
-    listing.innerHTML=page.length ? `<div class="invoice-records-scroll"><table class="invoice-records-table"><thead><tr><th>Invoice No.</th><th>Supplier</th><th>Date</th><th>Items</th><th>Received / Ordered</th><th>Value</th><th>Status</th><th>Actions</th></tr></thead><tbody>${page.map(b=>`<tr class="${b.id===selectedId?'is-selected':''}"><td><strong>${E(b.challan_no)}</strong><small>${E(b.invoice_no||'')}</small></td><td>${E(b.party_name)}</td><td>${E(b.order_date)}</td><td>${(b.lines||[]).length}</td><td>${b.received} / ${b.ordered} pcs</td><td>${money(b.received_value_known)}</td><td><span class="invoice-status invoice-status-${E(b.status)}">${E(b.status)}</span></td><td class="invoice-record-actions"><button type="button" data-id="${b.id}" data-action="view" aria-label="View invoice ${E(b.challan_no)}"><i class="fa-regular fa-eye"></i> View</button><button type="button" data-id="${b.id}" data-action="edit" ${b.status==='POSTED'?'disabled title="Posted invoices cannot be edited"':''} aria-label="Edit invoice ${E(b.challan_no)}"><i class="fa-solid fa-pen"></i> Edit</button><a href="/api/purchase-challans/${b.id}/export" download="MYRAA_Invoice_${b.id}.xlsx" aria-label="Download invoice ${E(b.challan_no)} Excel"><i class="fa-solid fa-file-excel"></i> Excel</a><button type="button" class="invoice-delete-action" data-id="${b.id}" data-action="delete" ${b.status==='POSTED'?'disabled title="Posted invoices cannot be deleted"':''} aria-label="Delete invoice ${E(b.challan_no)}" title="Delete saved draft invoice"><i class="fa-solid fa-trash-can" aria-hidden="true"></i><span class="sr-only">Delete invoice</span></button></td></tr>`).join('')}</tbody></table></div>` : '<div class="invoice-no-records"><i class="fa-regular fa-folder-open"></i><strong>No saved invoices found</strong><span>Try clearing the search filters or create your first invoice.</span></div>';
+    listing.innerHTML=page.length ? `<div class="invoice-records-scroll"><table class="invoice-records-table"><thead><tr><th>Invoice No.</th><th>Supplier</th><th>Date</th><th>Items</th><th>Received / Ordered</th><th>Value</th><th>Status</th><th>Actions</th></tr></thead><tbody>${page.map(b=>`<tr class="${b.id===selectedId?'is-selected':''}"><td><strong>${E(b.challan_no)}</strong><small>${E(b.invoice_no||'')}</small></td><td>${E(b.party_name)}</td><td>${E(b.order_date)}</td><td>${(b.lines||[]).length}</td><td>${b.received} / ${b.ordered} pcs</td><td>${money(b.received_value_known)}</td><td><span class="invoice-status invoice-status-${E(b.status)}">${E(b.status)}</span></td><td class="invoice-record-actions"><button type="button" data-id="${b.id}" data-action="view" aria-label="View invoice ${E(b.challan_no)}"><i class="fa-regular fa-eye"></i> View</button><button type="button" data-id="${b.id}" data-action="edit" aria-label="Edit invoice ${E(b.challan_no)}"><i class="fa-solid fa-pen"></i> Edit</button><a href="/api/purchase-challans/${b.id}/export" download="MYRAA_Invoice_${b.id}.xlsx" aria-label="Download invoice ${E(b.challan_no)} Excel"><i class="fa-solid fa-file-excel"></i> Excel</a><button type="button" class="invoice-delete-action" data-id="${b.id}" data-action="delete" ${b.status==='POSTED'?'disabled title="Posted invoices cannot be deleted"':''} aria-label="Delete invoice ${E(b.challan_no)}" title="Delete saved draft invoice"><i class="fa-solid fa-trash-can" aria-hidden="true"></i><span class="sr-only">Delete invoice</span></button></td></tr>`).join('')}</tbody></table></div>` : '<div class="invoice-no-records"><i class="fa-regular fa-folder-open"></i><strong>No saved invoices found</strong><span>Try clearing the search filters or create your first invoice.</span></div>';
     listing.querySelectorAll('button[data-id]').forEach(button=>button.addEventListener('click',()=>{
       const id = Number(button.dataset.id);
       if (button.dataset.action === 'delete') {
@@ -265,6 +265,7 @@
   }
   async function loadChallans() {
     const listing=$('challan-batches'),summary=$('challan-summary');
+    const periodLoading=$('myraa-period-summary');if(periodLoading)periodLoading.innerHTML='<span class="myraa-load-spinner" aria-hidden="true"></span>Refreshing purchase totals…';
     try {
       const version=++requestVersion;
       const query=new URLSearchParams({q:($('challan-search')?.value||'').trim(),date_filter:$('challan-filter-date')?.value||'',limit:String(PAGE_SIZE),offset:String(challanPage*PAGE_SIZE)});
@@ -275,6 +276,14 @@
         <div><small>Received</small><strong>${Number(data.received_pieces||0).toLocaleString('en-IN')} pcs</strong></div>
         <div><small>Pending</small><strong>${Number(data.pending_pieces).toLocaleString('en-IN')} pcs</strong></div>
         <div><small>Known received goods value</small><strong>${money(data.received_value_known)}</strong>${data.received_unpriced_pieces?`<small>${data.received_unpriced_pieces} received pcs need cost</small>`:''}</div>`;
+      const periodHost=$('myraa-period-summary');
+      if(periodHost){
+        const chosen=$('challan-filter-date')?.value||new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
+        const period=await json('/api/purchase-challans/summary?date_filter='+encodeURIComponent(chosen));
+        if(version!==requestVersion)return;
+        const tile=(label,t)=>`<article class="myraa-period-tile"><small>${label} · ${t.invoice_count} invoices</small><strong>${Number(t.ordered_pieces).toLocaleString('en-IN')} pcs · ${money(t.ordered_value)}</strong><span>Received ${t.received_pieces} · Pending ${t.pending_pieces} · Received cost ${money(t.received_value)}</span></article>`;
+        periodHost.innerHTML=tile('Selected day '+chosen,period.today)+tile('This month',period.month)+tile('All time',period.all_time);
+      }
       challanRows=data.items||[];
       challanTotal=Number(data.total||0);
       renderChallanList();

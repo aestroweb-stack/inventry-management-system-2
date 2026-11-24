@@ -1170,6 +1170,7 @@ def list_trash(limit: int | None = Query(None, ge=1, le=100), offset: int = Quer
     query = (
         db.query(models.Product).options(selectinload(models.Product.variants))
         .filter(models.Product.is_deleted == True)  # noqa: E712
+        .filter(~models.Product.id.in_(db.query(business_models.HiddenTrashProduct.product_id)))
         .order_by(models.Product.deleted_at.desc())
     )
     total = query.count()
@@ -1187,7 +1188,10 @@ def permanently_delete(sku: str, db: Session = Depends(get_db)):
     product = _get_product_by_sku(db, sku, include_deleted=True)
     if not product.is_deleted:
         raise HTTPException(400, "Move the product to Trash first.")
-    raise HTTPException(409, "Permanent deletion is disabled to protect inventory and order history. Restore this product from Trash instead.")
+    if not db.query(business_models.HiddenTrashProduct).filter_by(product_id=product.id).first():
+        db.add(business_models.HiddenTrashProduct(product_id=product.id))
+        db.commit()
+    return {"hidden": True, "retained_on_server": True, "sku": sku}
 
 
 # ------------------------------------------------------------------ #

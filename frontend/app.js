@@ -251,7 +251,7 @@ function switchView(name, { updateUrl = true } = {}) {
   if (name === "orders") loadOrderHistory();
   if (name === "reorder") loadReorderList();
   if (name === "alerts") loadAlerts();
-  if (name === "trash") { loadTrash(); loadRecoveryPoints(); }
+  if (name === "trash") { loadTrash(); }
   if (name === "visual") loadVisualSearchStatus();
   if (name === "history") { history.offset = 0; loadHistory(true); }
 }
@@ -1912,7 +1912,7 @@ async function loadReorderList() {
 // ALERTS (with inline quick-update)
 // ================================================================ //
 async function refreshInventoryViews() {
-  await Promise.allSettled([loadSummary(), loadInventory(), loadReorderList(), loadAlerts()]);
+  await Promise.allSettled([loadSummary(), loadInventory(), loadReorderList(), loadAlerts(), window.myraaLoadCosting?.()]);
   if ($("view-products")?.classList.contains("is-active")) await loadLatestProducts();
   if ($("view-dashboard")?.classList.contains("is-active")) await loadMoversChart();
   if ($("view-orders")?.classList.contains("is-active")) await loadOrderHistory();
@@ -2101,9 +2101,15 @@ async function loadTrash() {
         </div>
         <div class="tcard-actions">
           <button class="btn-secondary trash-restore" type="button"><i class="fa-solid fa-rotate-left"></i><span>Restore</span></button>
-          <span class="trash-protected"><i class="fa-solid fa-lock" aria-hidden="true"></i> History protected</span>
+          <button class="btn-secondary trash-delete" type="button"><i class="fa-solid fa-trash-can"></i><span>Permanent delete</span></button>
         </div>
       </article>`).join("");
+    grid.querySelectorAll('.trash-delete').forEach(btn => btn.addEventListener('click', async () => {
+      const sku=btn.closest('.tcard').dataset.sku;
+      if(!await window.MYRAAUI.confirm(`Hide ${sku} permanently from your Trash? The server keeps its history for recovery.`,{title:'Remove from seller Trash?',confirmText:'Hide permanently',variant:'danger'}))return;
+      try { await apiDelete(`${API}/trash/${encodeURIComponent(sku)}`); showToast(`${sku} removed from seller Trash`);loadTrash(); }
+      catch(e){showToast('Could not remove: '+e.message,true);}
+    }));
     grid.querySelectorAll(".trash-restore").forEach((btn) => btn.addEventListener("click", async () => {
       const sku = btn.closest(".tcard").dataset.sku;
       try { await apiPost(`${API}/products/${encodeURIComponent(sku)}/restore`); showToast(`${sku} restored successfully`, "success"); if (trashPage.offset && items.length === 1) trashPage.offset = Math.max(0, trashPage.offset - trashPage.limit); loadTrash(); loadSummary(); }

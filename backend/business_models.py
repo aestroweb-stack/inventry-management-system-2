@@ -96,3 +96,10 @@ class PurchaseChallanAttachment(Base):
     size_bytes = Column(Integer, nullable=False)
     created_at = Column(DateTime(timezone=True), default=utcnow)
     challan = relationship("PurchaseChallan", back_populates="attachments")
+
+
+class HiddenTrashProduct(Base):
+    """Seller-panel removal marker. Product and transaction records are retained."""
+    __tablename__ = 'myraa_hidden_trash_products'
+    product_id = Column(Integer, ForeignKey('products.id'), primary_key=True)
+    hidden_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)

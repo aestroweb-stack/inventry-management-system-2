@@ -434,16 +434,16 @@ def photo_path(filename: str) -> Path:
 @router.post("/me/photo")
 async def upload_photo(request: Request, file: UploadFile = File(...), account: WorkspaceUser = Depends(current_user), db: Session = Depends(get_db)):
     origin_guard(request)
-    content = await file.read(2_000_001)
-    if not content or len(content) > 2_000_000:
-        raise HTTPException(422, "Photo max 2 MB")
+    content = await file.read(10_000_001)
+    if not content or len(content) > 10_000_000:
+        raise HTTPException(422, "Photo max 10 MB")
     try:
         with Image.open(io.BytesIO(content)) as picture:
             if picture.format not in ("PNG", "WEBP", "JPEG"):
                 raise HTTPException(422, "Only JPG, PNG, WEBP")
-            picture.thumbnail((512, 512))
+            picture.thumbnail((2048, 2048))
             data = io.BytesIO()
-            picture.convert("RGB").save(data, "WEBP", quality=82)
+            picture.convert("RGB").save(data, "WEBP", quality=93)
     except (OSError, UnidentifiedImageError, Image.DecompressionBombError):
         raise HTTPException(422, "Invalid image")
     PHOTO_DIR.mkdir(parents=True, exist_ok=True)
