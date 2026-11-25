@@ -1,0 +1,23 @@
+/* Scoped to PWA additions; existing R17 layout and themes remain intact. */
+[data-myraa-install][hidden], #myraa-offline-notice[hidden]{display:none!important}
+#shell #sidebar .myraa-install-trigger:not([hidden]){color:#d5f5e7;border:1px solid #75c3a255;background:#ffffff0c}
+.myraa-login-install{width:100%;padding:12px;border:1px solid #a8cdbd;background:#eef7f2;color:#075c47;font:inherit;font-weight:700;border-radius:12px;cursor:pointer;margin-top:12px}
+#myraa-install-dialog{box-sizing:border-box;width:min(440px,calc(100% - 32px));max-height:calc(100dvh - 32px);overflow:auto;padding:24px;border:1px solid #c7ddd1;border-radius:22px;background:#fff;color:#18382e;font:15px/1.5 system-ui,sans-serif;box-shadow:0 20px 60px #001f2844;margin:auto;z-index:100000}
+#myraa-install-dialog::backdrop{background:#09292299}
+#myraa-install-dialog .myraa-install-head{display:flex;align-items:center;gap:14px}
+#myraa-install-dialog .myraa-install-head img{border-radius:14px;flex:none}
+#myraa-install-dialog h2{color:inherit;font-size:23px;line-height:1.2;margin:3px 0}
+#myraa-install-dialog small{color:#08765b;font-size:11px;font-weight:750;letter-spacing:.1em}
+#myraa-install-dialog p{color:#49685b;margin:10px 0}
+#myraa-install-dialog .myraa-install-steps{background:#eef6f1;padding:14px;border-radius:13px;overflow-wrap:anywhere}
+#myraa-install-dialog .myraa-install-steps p{margin:3px 0 12px}
+#myraa-install-dialog .myraa-install-steps p:last-child{margin-bottom:0}
+#myraa-install-dialog .myraa-install-note{font-size:13px}
+#myraa-install-dialog button{width:100%;padding:12px;background:#08765b;color:#fff;border:0;border-radius:10px;font:inherit;font-weight:700;cursor:pointer}
+#myraa-install-dialog button:focus-visible,.myraa-login-install:focus-visible{outline:3px solid #31ae87;outline-offset:3px}
+[data-theme="dark"] #myraa-install-dialog{background:#13382f;color:#f0faf5;border-color:#416c5c}
+[data-theme="dark"] #myraa-install-dialog p{color:#c5e1d3}
+[data-theme="dark"] #myraa-install-dialog small{color:#94e0bd}
+[data-theme="dark"] #myraa-install-dialog .myraa-install-steps{background:#1c4a3c}
+#myraa-offline-notice{position:fixed;z-index:100001;left:50%;transform:translateX(-50%);bottom:max(12px,env(safe-area-inset-bottom));width:max-content;max-width:calc(100% - 24px);background:#fce8c4;color:#664000;border:1px solid #dcb76c;padding:10px 14px;border-radius:10px;font:600 13px/1.4 system-ui,sans-serif;box-shadow:0 6px 22px #0002;text-align:center;pointer-events:none}
+@media(display-mode:standalone){body{overscroll-behavior-y:none}.myraa-owner-footer{padding-bottom:max(16px,env(safe-area-inset-bottom))}}

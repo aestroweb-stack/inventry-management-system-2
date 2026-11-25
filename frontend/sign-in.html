@@ -3,8 +3,15 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>MYRAA · Secure Login</title>
+<meta name="theme-color" content="#005446">
 <link rel="icon" href="assets/myraa-favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="clerk-auth.css?v=5">
+<link rel="manifest" href="/app/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/app/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="stylesheet" href="/app/pwa-mobile.css?v=nov25-r18">
+<script defer src="/app/pwa-install.js?v=nov25-r18"></script>
 </head>
 <body data-myraa-clerk="login">
 <main class="clerk-shell">
@@ -36,6 +43,7 @@
       </div>
       <div id="clerk-auth-root" class="clerk-auth-root" role="tabpanel" aria-labelledby="clerk-tab-login" aria-busy="true"></div>
       <p id="clerk-auth-error" class="clerk-auth-error" role="alert"></p>
+      <button type="button" class="myraa-login-install" data-myraa-install hidden>Install MYRAA App</button>
       <p class="clerk-security-caption">Protected sign-in · Private seller workspace</p>
     </div>
   </section>

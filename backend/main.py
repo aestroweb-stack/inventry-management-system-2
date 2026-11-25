@@ -121,11 +121,11 @@ async def authenticated_seller_workspace(request: Request, call_next):
     path = request.url.path
     # Never serve stale application code or conditional 304 responses after deploy.
     if path == "/app" or path.startswith("/app/"):
-        if path.endswith((".js", ".css", ".html")) or path in ("/app", "/app/"):
+        if path.endswith((".js", ".css", ".html", ".webmanifest")) or path in ("/app", "/app/"):
             request.scope["headers"] = [(k, v) for k, v in request.scope["headers"] if k not in (b"if-none-match", b"if-modified-since")]
             response = await call_next(request)
             response.headers["Cache-Control"] = "no-store, max-age=0"
-            response.headers["X-MYRAA-Release"] = "nov25-r13"
+            response.headers["X-MYRAA-Release"] = "nov25-r18"
             return response
     # The public StaticFiles mount must never serve a legacy/global product
     # photo from a nested path that bypasses the seller-specific image route.
@@ -226,7 +226,7 @@ def auth_logout_deprecated():
 
 @app.get("/api/health")
 def health(response: Response):
-    response.headers["X-MYRAA-Release"] = "nov25-r13"
+    response.headers["X-MYRAA-Release"] = "nov25-r18"
     response.headers["Cache-Control"] = "no-store"
     return {"status": "ok"}
 
