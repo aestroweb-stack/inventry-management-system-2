@@ -167,7 +167,8 @@ def download(id:int,allow_partial:bool=False,db:Session=Depends(get_db)):
     if not s['matched_qty']: raise HTTPException(409,'No matched packing items. Resolve SKU review and reprocess before downloading.')
     if s['review_count'] and not allow_partial: raise HTTPException(409,'Unmatched rows remain. Confirm partial export; unmatched quantities remain in the on-screen saved review and are not packed.')
     name=re.sub(r'[^A-Za-z0-9_-]','-',s['group']['name'])[:60] or 'Brand'
-    return Response(r.workbook,media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',headers={'Content-Disposition':f'attachment; filename="MYRAA_Packing_{name}_{r.picklist_date}.xlsx"','X-Picklist-Total-Qty':str(s['total_qty']),'X-Picklist-Matched-Qty':str(s['matched_qty'])})
+    binary=r.workbook if s.get('export_version',0)>=11 else svc.visible_gridlines_copy(r.workbook)
+    return Response(binary,media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',headers={'Content-Disposition':f'attachment; filename="MYRAA_Packing_{name}_{r.picklist_date}.xlsx"','X-Picklist-Total-Qty':str(s['total_qty']),'X-Picklist-Matched-Qty':str(s['matched_qty'])})
 
 @router.delete('/history/{id}')
 def delete_history(id:int,db:Session=Depends(get_db)):

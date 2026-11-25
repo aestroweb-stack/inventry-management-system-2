@@ -88,8 +88,8 @@
           <p class="hint">Whole-product SKU works when the marketplace order includes a size. Size-specific SKU matches directly.</p>
           <div class="business-aliases">${aliases.length?aliases.map(a=>`<div class="business-alias"><span><code>${E(a.sku)}</code><small>${E(a.marketplace)} · ${a.size?'Size '+E(a.size):'Whole product'}</small></span><button type="button" class="business-remove-alias" data-alias-type="${a.scope}" data-alias-id="${a.id}" title="Remove mapping" aria-label="Remove ${E(a.sku)}"><i class="fa-solid fa-xmark"></i></button></div>`).join(''):'<p class="hint">No extra SKUs yet.</p>'}</div>
           <form class="business-add-alias-v2" hidden><div class="business-add-alias-fields">
-            <label>Marketplace SKU<input class="input" name="sku" required maxlength="180" placeholder="e.g. TWINS_URVISHA_RED"></label>
-            <label>Marketplace (optional)<input class="input" name="marketplace" maxlength="80" placeholder="e.g. Twins"></label>
+            <label>Marketplace SKU<input class="input" name="sku" required maxlength="180" placeholder="e.g. SAMPLE_DESIGN_RED"></label>
+            <label>Marketplace (optional)<input class="input" name="marketplace" maxlength="80" placeholder="e.g. Platform A"></label>
             <label>Applies to<select class="input" name="size"><option value="">Whole product (Size required)</option>${options}</select></label>
           </div><div class="business-inline-actions"><button class="btn-primary" type="submit">Save SKU</button><button type="button" class="btn-secondary business-alias-cancel">Cancel</button></div></form>
         </section>

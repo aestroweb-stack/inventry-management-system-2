@@ -11,7 +11,7 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
 <link rel="stylesheet" href="myraa-production.css?v=nov24-r4">
 <link rel="stylesheet" href="myraa-signature-v3.css?v=nov24-r4">
-  <link rel="stylesheet" href="packing-picklist.css?v=nov25-r9">
+  <link rel="stylesheet" href="packing-picklist.css?v=nov25-r11">
   <link rel="stylesheet" href="business-workspace.css?v=nov24-r4">
   <link rel="stylesheet" href="product-challan-pages.css?v=nov24-r4">
   <link rel="stylesheet" href="seller-workspace.css?v=nov24-r4">
@@ -336,9 +336,9 @@
           <aside class="ps-group-library"><div class="ps-library-head"><strong><i class="fa-solid fa-layer-group"></i> Saved Main Brands</strong><span id="ps-group-count" class="ps-chip">0</span></div><div id="ps-group-library" class="ps-library-list"></div></aside>
           <form id="ps-group-form" class="ps-form ps-editor">
             <div class="ps-editor-head ps-span"><span id="ps-editor-mode" class="ps-state">New Main Brand</span><p class="hint" id="ps-editor-hint">Create an independent group; existing groups will not change.</p></div>
-            <label class="ps-field ps-span">Main Brand name<input id="ps-name" class="input" maxlength="100" required placeholder="e.g. MODA RAPIDO" autocomplete="off"></label>
-            <label class="ps-field ps-span">Source brands &amp; SKU abbreviations (optional)<textarea id="ps-children" class="input" rows="4" placeholder="MODA RAPIDO | MODA&#10;HERE&amp;NOW | H&amp;N&#10;SZN" autocomplete="off"></textarea></label>
-            <p class="hint ps-span">One brand per line. Use | to connect a full name and its SKU abbreviations. Leave blank for a single-brand group. The main brand is included automatically (e.g. MODA RAPIDO → MODA). Registered Master SKU controls party, design, color and size; no fixed master prefix required.</p>
+            <label class="ps-field ps-span">Main Brand name<input id="ps-name" class="input" maxlength="100" required placeholder="e.g. SAMPLE APPAREL" autocomplete="off"></label>
+            <label class="ps-field ps-span">Source brands &amp; SKU abbreviations (optional)<textarea id="ps-children" class="input" rows="4" placeholder="SAMPLE APPAREL | SAMPLE&#10;BRAND A | BA&#10;BRAND B | BB" autocomplete="off"></textarea></label>
+            <p class="hint ps-span">One brand per line. Use | to connect a full name and its SKU abbreviations. Leave blank for a single-brand group. The main brand is included automatically (e.g. SAMPLE APPAREL → SAMPLE). Registered Master SKU controls party, design, color and size; no fixed master prefix required.</p>
             <div class="ps-actions ps-span"><button type="submit" class="btn-primary" id="ps-group-save">Create Brand Group</button><button type="button" class="btn-secondary ps-danger" id="ps-group-delete" hidden>Delete Group</button><button type="button" class="btn-secondary" id="ps-manager-close">Close</button></div>
           </form>
         </div>
@@ -353,7 +353,7 @@
           </div>
           <div id="ps-file-markets" class="ps-file-markets" hidden></div>
           <p class="hint">Packing Excel contains SKU and quantity only. Unmatched items stay in the saved SKU Matching Review.</p>
-          <p class="hint">Marketplace is detected from the file column or registered alias. If metadata is missing, enter a marketplace beside the file. Different marketplaces never share packing blocks. Total rows are ignored; processing saves a dated snapshot.</p>
+          <p class="hint">A unique registered SKU can match without a source brand. Marketplace is detected from the file column or registered alias. If metadata is missing, enter a marketplace beside the file. Different marketplaces never share packing blocks. Total rows are ignored; processing saves a dated snapshot.</p>
         </section>
         <section class="panel packing-results" aria-live="polite">
           <div class="ps-section-head"><h2><i class="fa-solid fa-layer-group"></i> 2 · Process &amp; Save</h2><div class="ps-actions"><button id="packing-preview" class="btn-primary" type="button" disabled><i class="fa-solid fa-play"></i> Process &amp; Save</button><button id="packing-export" class="btn-secondary" type="button" disabled><i class="fa-solid fa-file-arrow-down"></i> Excel</button></div></div>
@@ -373,7 +373,7 @@
         <div class="packing-pagination" id="packing-pagination" hidden><button class="btn-secondary" type="button" id="packing-prev">← Previous</button><span id="packing-page-info"></span><button class="btn-secondary" type="button" id="packing-next">Next →</button></div>
       </section>
       <section class="panel packing-sample-panel"><div class="ps-section-head"><div><h2><i class="fa-solid fa-users"></i> Party-wise Packing Preview</h2><p class="hint">Merged by marketplace, party and registered Master SKU + size. Different marketplaces use separate column blocks; no total row. 6 records per page.</p></div><span id="ps-merged-info" class="hint"></span></div><div id="packing-party-list" class="ps-party-grid"><p class="hint">Matched party totals will appear here.</p></div><div class="packing-pagination" id="ps-party-totals-pagination" hidden><button class="btn-secondary" type="button" id="ps-party-totals-prev">← Previous</button><span id="ps-party-totals-page" aria-live="polite"></span><button class="btn-secondary" type="button" id="ps-party-totals-next">Next →</button></div><div class="ps-section-head ps-party-filter"><label class="ps-field">Search merged packing items<input id="ps-party-q" class="input" placeholder="Party, Master SKU or product…"></label></div><div class="table-wrap"><table class="grid"><thead><tr><th>Marketplace / Party</th><th>Master SKU + Size</th><th>Product</th><th>Source brands</th><th>Qty</th></tr></thead><tbody id="ps-party-items"><tr><td colspan="5" class="empty">No processed items yet.</td></tr></tbody></table></div><div class="packing-pagination" id="ps-party-pagination" hidden><button class="btn-secondary" type="button" id="ps-party-prev">← Previous</button><span id="ps-party-page"></span><button class="btn-secondary" type="button" id="ps-party-next">Next →</button></div></section>
-      <section class="panel packing-sample-panel"><div class="ps-section-head"><div><h2><i class="fa-solid fa-clock-rotate-left"></i> Saved Picklist History</h2><p class="hint">Saved on your server. Reopen or download the exact saved Excel later.</p></div><div class="ps-filters"><input id="ps-history-date" type="date" class="input" aria-label="Filter picklist date"><select id="ps-history-group" class="input" aria-label="Filter main brand"><option value="">All Main Brands</option></select><button class="btn-secondary" id="ps-history-clear" type="button">Clear</button></div></div><div class="table-wrap"><table class="grid"><thead><tr><th>Picklist date</th><th>Main Brand</th><th>Synced source brands</th><th>Quantities</th><th>Actions</th></tr></thead><tbody id="ps-history"><tr><td colspan="5" class="empty">No saved picklists yet.</td></tr></tbody></table></div><div class="packing-pagination" id="ps-history-pagination" hidden><button class="btn-secondary" type="button" id="ps-history-prev">← Previous</button><span id="ps-history-page"></span><button class="btn-secondary" type="button" id="ps-history-next">Next →</button></div></section>
+      <section class="panel packing-sample-panel ps-history-panel"><div class="ps-section-head"><div><h2><i class="fa-solid fa-clock-rotate-left"></i> Saved Picklist History</h2><p class="hint">Saved on your server. Reopen results or download saved quantities later.</p></div><div class="ps-filters"><input id="ps-history-date" type="date" class="input" aria-label="Filter picklist date"><select id="ps-history-group" class="input" aria-label="Filter main brand"><option value="">All Main Brands</option></select><button class="btn-secondary" id="ps-history-clear" type="button">Clear</button></div></div><div class="table-wrap"><table class="grid ps-history-table"><thead><tr><th>Picklist date</th><th>Main Brand</th><th>Synced source brands</th><th>Quantities</th><th>Actions</th></tr></thead><tbody id="ps-history"><tr><td colspan="5" class="empty">No saved picklists yet.</td></tr></tbody></table></div><div class="packing-pagination" id="ps-history-pagination" hidden><button class="btn-secondary" type="button" id="ps-history-prev">← Previous</button><span id="ps-history-page"></span><button class="btn-secondary" type="button" id="ps-history-next">Next →</button></div></section>
     </section>
 
     <!-- ================= REORDER LIST ================= -->
@@ -535,8 +535,8 @@
 <script src="myraa-auth-gate.js?v=nov24-r4"></script>
 <script src="app.js?v=nov25-r10"></script>
 <script src="myraa-signature-v3.js?v=nov24-r4"></script>
-<script src="packing-picklist.js?v=nov25-r10"></script>
-<script src="business-workspace.js?v=nov24-r5"></script>
+<script src="packing-picklist.js?v=nov25-r11"></script>
+<script src="business-workspace.js?v=nov25-r11"></script>
 <script src="product-challan-pages.js?v=nov24-r4"></script>
 <script src="myraa-challan-studio.js?v=nov24-r4"></script>
 <script src="seller-sounds.js?v=nov24-r4"></script>

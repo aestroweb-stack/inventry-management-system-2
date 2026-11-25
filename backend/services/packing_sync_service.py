@@ -125,8 +125,7 @@ class CatalogIndex:
 
 def market_key(value):
     # Platform names are data, not a hard-coded marketplace list.
-    # The SKU Summary export labels a Myntra sales channel with account suffixes
-    # (e.g. Myntra PPMP 2(MY_Twinslady)); those are not separate marketplaces.
+    # Some SKU Summary exports use channel account suffixes; these are not separate marketplaces.
     raw=clean(value)
     raw=re.sub(r'\s*\(\s*MY[_ -][^)]*\)\s*$','',raw)
     raw=re.sub(r'\s+PPMP(?:\s+\d+)?$','',raw)
@@ -171,8 +170,7 @@ def brand_lookup(children):
 def group_brand_lookup(group):
     """Main brand is an implicit member, without editing saved child records.
 
-    A multi-word main name has a conservative first-token abbreviation (MODA,
-    TWINS). Explicit child aliases are never overwritten. A conflicting short
+    A multi-word main name has a conservative first-token abbreviation. Explicit child aliases are never overwritten. A conflicting short
     alias is not assigned automatically.
     """
     children = group['children'] or [group['name']]
@@ -253,10 +251,22 @@ def consolidate(db, files, group, selected_date, default_brand='', include_audit
             total+=qty; brand,issue=source_brand(sku,row.get(brand_col) if brand_col is not None else '',children,default_brand,(lookup,canonical))
             row_size=row.get(size_col) if size_col is not None else ''
             v,match_issue=catalog.resolve(sku,row_size)
+            registered_match = v is not None
             if not v and match_issue=='SKU not registered in active product catalog' and (not issue or issue.startswith('Source brand missing')):
                 v,match_issue=catalog.resolve_synced(sku,row_size,catalog_brands)
-            if v and issue.startswith('Source brand missing') and normalized(clean(v.product.sku).split('_',1)[0]) in catalog_brands:
-                brand=catalog_brands[normalized(clean(v.product.sku).split('_',1)[0])]; issue=''
+            # A unique registered alias (including whole-product alias + size)
+            # is authoritative even when the source brand is absent. Shared
+            # masters can have a different prefix from the selected group.
+            # Never override an explicitly unsynced source brand or accept an
+            # unrecognized prefix based on suffix guessing alone.
+            match_note=''
+            if v and issue.startswith('Source brand missing'):
+                master_prefix=normalized(clean(v.product.sku).split('_',1)[0])
+                if master_prefix in catalog_brands:
+                    brand=catalog_brands[master_prefix]; issue=''
+                elif registered_match:
+                    brand='UNSPECIFIED'; issue=''
+                    match_note='Registered SKU matched; source brand not supplied'
             master=clean(v.product.sku) if v else ''; party=''; printable=''; name=v.product.name if v else ''; size=_norm_size(v.size) if v else ''
             if v: party,party_issue=master_party(master)
             else: party_issue=''
@@ -269,7 +279,7 @@ def consolidate(db, files, group, selected_date, default_brand='', include_audit
             if not marketplace and not market_issue and len(files)>1: marketplace=f'UNSPECIFIED FILE {file_index+1}'
             issue='; '.join(x for x in (issue,match_issue,party_issue,market_issue) if x)
             if v: printable=f'{master}_{size}'
-            item={'marketplace':marketplace,'file':filename,'row':num,'brand':brand,'source_sku':sku,'master_sku':master,'size':size,'pick_sku':printable,'party':party,'product':name,'qty':qty,'issue':issue}
+            item={'marketplace':marketplace,'file':filename,'row':num,'brand':brand,'source_sku':sku,'master_sku':master,'size':size,'pick_sku':printable,'party':party,'product':name,'qty':qty,'issue':issue,'match_note':match_note}
             audit.append(item)
             if not issue:
                 key=(marketplace,party,v.id)
@@ -283,7 +293,7 @@ def consolidate(db, files, group, selected_date, default_brand='', include_audit
     parties=Counter(); market_totals=Counter()
     for item in items:
         market=item.get('marketplace',''); parties[f'{market} · {item["party"]}' if market else item['party']]+=item['qty']; market_totals[market or 'Unspecified']+=item['qty']
-    return {'export_version':9,'date':day,'group':group,'files':[x[0] for x in files], 'include_audit':bool(include_audit),'source_rows':len(audit),'total_qty':total,'matched_qty':matched,'review_qty':review_qty,'review_count':len(review),'merged_rows':len(items),'skipped_rows':skipped,'items':items,'audit':audit,'party_totals':dict(parties),'marketplace_totals':dict(market_totals),'marketplaces':sorted(observed_markets|{x['marketplace'] for x in audit if x['marketplace']})}
+    return {'export_version':11,'date':day,'group':group,'files':[x[0] for x in files], 'include_audit':bool(include_audit),'source_rows':len(audit),'total_qty':total,'matched_qty':matched,'review_qty':review_qty,'review_count':len(review),'merged_rows':len(items),'skipped_rows':skipped,'items':items,'audit':audit,'party_totals':dict(parties),'marketplace_totals':dict(market_totals),'marketplaces':sorted(observed_markets|{x['marketplace'] for x in audit if x['marketplace']})}
 
 
 def pack_lanes(items, capacity=40):
@@ -314,7 +324,7 @@ def workbook_bytes(result):
     wb=Workbook(); ws=wb.active
     name=re.sub(r'[\\/*?:\[\]]','-',result['group']['name']).strip(" '")[:31] or 'Packing'
     if name.lower() in {'review','source audit'}: name='Packing '+name
-    ws.title=name; ws.sheet_view.showGridLines=False
+    ws.title=name; ws.sheet_view.showGridLines=True
     black=Side(style='thin',color='FF000000'); border=Border(left=black,right=black,top=black,bottom=black)
     font=Font(name='Calibri',size=22,bold=True,color='FF000000'); align=Alignment(horizontal='center',vertical='center',shrink_to_fit=False)
     lanes=[]; markets=defaultdict(list)
@@ -356,3 +366,16 @@ def workbook_bytes(result):
     ws.page_margins.left=.15; ws.page_margins.right=.15; ws.page_margins.top=.2; ws.page_margins.bottom=.2
     for idx in range(2,len(lanes),2): ws.col_breaks.append(Break(id=idx*3))
     out=BytesIO(); wb.save(out); return out.getvalue()
+
+
+def visible_gridlines_copy(payload):
+    """Change only gridline visibility in legacy XLSX downloads; retain stored snapshot."""
+    from zipfile import ZipFile
+    output=BytesIO()
+    with ZipFile(BytesIO(payload)) as source, ZipFile(output,'w') as target:
+        for info in source.infolist():
+            content=source.read(info.filename)
+            if re.fullmatch(r'xl/worksheets/sheet[0-9]+\.xml',info.filename):
+                content=re.sub(rb'showGridLines="(?:0|false)"',b'showGridLines="1"',content)
+            target.writestr(info,content)
+    return output.getvalue()

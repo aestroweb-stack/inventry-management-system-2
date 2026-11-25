@@ -258,3 +258,56 @@ def test_r10_party_items_paginate_six(session):
         assert r['matched_qty']==13 and len(r['party_totals'])==13
         url=b+f'/history/{r["id"]}'
         assert [len(c.get(url,params={'page':i,'view':'items'}).json()['rows']) for i in (1,2,3)]==[6,6,1]
+
+
+def test_r11_registered_whole_product_alias_numeric_sizes_cross_group(session):
+    p=models.Product(sku='BRANDA_O_SAMPLE_BEIGE',name='Sample Beige');session.add(p);session.flush()
+    for size in ('26','34'):
+        session.add(models.Variant(product_id=p.id,size=size,variant_code=f'{p.sku}-{size}',current_stock=3))
+    session.add(business_models.ProductMarketplaceAlias(product_id=p.id,alias_code='BS-22141-BEIGE',normalized_code='BS-22141-BEIGE',marketplace='Platform A'));session.commit()
+    groups=[{'id':51,'name':'BrandA Apparel','children':['Source A']},{'id':52,'name':'BrandB Apparel','children':['Source B']}]
+    for group in groups:
+        r=s.consolidate(session,[('sample.csv',b'SKU,Qty\nBS-22141-BEIGE-26,1\nBS-22141-BEIGE-34,2\n')],group,'2026-11-25')
+        assert r['total_qty']==r['matched_qty']==3 and r['review_qty']==0
+        assert {x['pick_sku']:x['qty'] for x in r['items']}=={'BRANDA_O_SAMPLE_BEIGE_26':1,'BRANDA_O_SAMPLE_BEIGE_34':2}
+        assert r['marketplaces']==['PLATFORM A']
+        if group['id']==52:
+            assert all(x['brand']=='UNSPECIFIED' and x['match_note'] for x in r['audit'])
+        assert r['export_version']==11
+    # Explicit unsynced brand, unknown SKU, conflicting size and absent size must still be reviewed.
+    r=s.consolidate(session,[('sample.csv',b'SKU,Qty,Brand,Size\nBS-22141-BEIGE-26,1,Foreign,26\nUNKNOWN,2,,26\nBS-22141-BEIGE-34,3,,26\nBS-22141-BEIGE,4,,\n')],groups[1],'2026-11-25')
+    assert r['review_qty']==10 and r['matched_qty']==0
+    assert 'not synced' in r['audit'][0]['issue'] and 'conflicts' in r['audit'][2]['issue']
+    assert session.query(models.InventoryTransaction).count()==0
+
+
+def test_r11_gridlines_for_new_and_legacy_snapshots():
+    from openpyxl import Workbook
+    binary=s.workbook_bytes({'group':GROUP,'items':make_items('V',2),'date':'2026-11-25'})
+    ws=load_workbook(BytesIO(binary)).active
+    assert ws.sheet_view.showGridLines is True
+    assert ws['A2'].font.sz==22 and ws.row_dimensions[2].height==38 and ws['A2'].border.left.style=='thin'
+    old=Workbook();old.active.sheet_view.showGridLines=False;old.active['A1']='Example SKU';old.active['B1']=4
+    buf=BytesIO();old.save(buf);before=buf.getvalue()
+    updated=s.visible_gridlines_copy(before)
+    new_ws=load_workbook(BytesIO(updated)).active
+    assert new_ws.sheet_view.showGridLines is True and new_ws['B1'].value==4
+    assert load_workbook(BytesIO(before)).active.sheet_view.showGridLines is False
+
+
+def test_r11_legacy_download_preserves_snapshot(session):
+    import json
+    from openpyxl import Workbook
+    app=FastAPI();app.include_router(router);app.dependency_overrides[get_db]=lambda:session
+    with TestClient(app) as c:
+        base='/api/packing-sync';g=c.post(base+'/groups',json={'name':'Sample Group','children':['ALPHA','BETA']}).json()
+        run=c.post(base+'/process',files=[('files',('sample.csv',UPLOAD[0][1],'text/csv'))],data={'group_id':g['id'],'picklist_date':'2026-11-25'}).json()
+        saved=session.get(SavedPicklist,run['id']);summary=json.loads(saved.summary_json);summary['export_version']=9
+        old=load_workbook(BytesIO(saved.workbook));old.active.sheet_view.showGridLines=False
+        buf=BytesIO();old.save(buf);legacy=buf.getvalue()
+        saved.summary_json=json.dumps(summary);saved.workbook=legacy;session.commit()
+        response=c.get(base+f'/history/{run["id"]}/excel');assert response.status_code==200
+        new=load_workbook(BytesIO(response.content)).active
+        assert new.sheet_view.showGridLines is True
+        assert list(new.values)==list(old.active.values)
+        session.expire_all();assert session.get(SavedPicklist,run['id']).workbook==legacy
