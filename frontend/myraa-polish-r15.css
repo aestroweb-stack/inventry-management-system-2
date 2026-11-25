@@ -74,3 +74,17 @@
 #stage .ps-history-filters :is(.ps-history-date-field,.ps-history-brand-field)>span:first-child {line-height:1.35;}
 #stage .view :is(.panel,.detail-head,.detail-info,.detail-photo-gallery,.detail-photo-editor,.business-product-card,.business-product-grid-v2,.business-add-alias-fields) {min-width:0;max-width:100%;box-sizing:border-box;}
 @media(max-width:600px){#stage .detail-info-row,#stage .business-add-alias-fields {grid-template-columns:minmax(0,1fr)!important;}#stage .detail-info .detail-actions {flex-wrap:wrap;gap:8px;}#stage .detail-info .detail-actions>* {min-width:0;max-width:100%;}#stage .business-inline-actions {flex-wrap:wrap;} }
+
+/* R19: match the sidebar theme action on desktop and mobile navbars.
+   The premium navigation stylesheet sets every toolbar icon to mint with
+   !important, so override only the theme controls (not other toolbar icons). */
+:root[data-theme="dark"] #shell [data-theme-toggle][aria-pressed="true"],
+:root[data-theme="dark"] #shell [data-theme-toggle][aria-pressed="true"] > i,
+:root[data-theme="dark"] #shell [data-theme-toggle][aria-pressed="true"] > .rail-label {
+  color:#F6D46B!important;
+}
+:root:not([data-theme="dark"]) #shell [data-theme-toggle][aria-pressed="false"],
+:root:not([data-theme="dark"]) #shell [data-theme-toggle][aria-pressed="false"] > i,
+:root:not([data-theme="dark"]) #shell [data-theme-toggle][aria-pressed="false"] > .rail-label {
+  color:#86DEB8!important;
+}
