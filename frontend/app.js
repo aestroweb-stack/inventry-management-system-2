@@ -241,6 +241,7 @@ function viewFromLocation() {
 
 function switchView(name, { updateUrl = true } = {}) {
   if (!APP_VIEW_NAMES.has(name)) name = "dashboard";
+  if(name!=="detail")discardDetailPhotos($("detail-content"));
   if (updateUrl && viewFromLocation() !== name) window.history.pushState({ view: name }, "", `#${encodeURIComponent(name)}`);
   window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   document.documentElement.scrollTop = 0;
@@ -470,86 +471,96 @@ async function openProductDetail(sku) {
     const product = await getJSON(`${API}/products/${encodeURIComponent(sku)}`);
     document.querySelectorAll(".rail-link").forEach((b) => b.classList.toggle("is-active", b.dataset.view === "products"));
     document.querySelectorAll(".view").forEach((v) => v.classList.toggle("is-active", v.id === "view-detail"));
+    discardDetailPhotos($("detail-content"));
     renderDetail(product, $("detail-content"), { showDelete: true });
   } catch (e) { showToast("Could not open product", true); }
 }
 
-// Keep gallery changes independent of the metadata/size editor, including unsaved fields.
+// Gallery drafts never mutate the server until the main Save Changes action.
+const detailPhotoDrafts = new WeakMap();
+function discardDetailPhotos(container) {
+  const draft = detailPhotoDrafts.get(container);
+  if (draft) for (const item of draft.items) if (item.file) URL.revokeObjectURL(item.url);
+  detailPhotoDrafts.delete(container);
+}
+function getDetailPhotoDraft(product, container) {
+  const previous = detailPhotoDrafts.get(container);
+  const identity = product.id ?? product.sku;
+  if (previous && previous.identity === identity) return previous;
+  discardDetailPhotos(container);
+  const baseline = [...new Set([product.image_path, ...(product.images || [])].filter(Boolean))];
+  const draft = {identity, baseline, items:baseline.map(path=>({path,url:path})), selected:0, dirty:false};
+  detailPhotoDrafts.set(container,draft);
+  return draft;
+}
 function renderDetailPhotos(product, container) {
   const host = container.querySelector('.detail-photo-editor');
   if (!host) return;
-  const photos = [...new Set([product.image_path, ...(product.images || [])].filter(Boolean))];
-  let selected = photos[0] || null;
-  let busy = false;
+  const draft = getDetailPhotoDraft(product,container);
+  const photos = draft.items;
+  const src = item => item.file ? item.url : `${item.path}?v=${Date.now()}`;
   host.innerHTML = `<div class="detail-photo-stage">
-    <label class="detail-photo-box" id="detail-photo-box" role="button" tabindex="0" aria-label="Add or replace main product photo">
+    <label class="detail-photo-box" id="detail-photo-box" role="button" tabindex="0" aria-label="Add or replace selected product photo">
       <span class="detail-photo-placeholder"><i class="fa-solid fa-image"></i><small>Add photo</small></span>
-      <img alt="${esc(product.name)}" hidden><input type="file" accept="image/*" id="detail-photo-input" hidden>
+      <img alt="${esc(product.name)}" hidden><input type="file" accept="image/jpeg,image/png,image/webp" id="detail-photo-input" hidden>
     </label>
     <button class="detail-photo-remove" type="button" title="Remove selected photo" aria-label="Remove selected photo" hidden><i class="fa-solid fa-trash-can" aria-hidden="true"></i></button>
-  </div>${photos.length ? `<div class="detail-photo-thumbnails" aria-label="All product photos">${photos.map((path,i)=>`<div class="detail-photo-thumb-item"><button type="button" class="detail-photo-thumb" data-photo-index="${i}" aria-label="Show photo ${i+1}"><img class="detail-photo-thumb-image" src="${esc(path)}?v=${Date.now()}" alt="" loading="lazy"></button><button type="button" class="detail-thumb-remove" data-remove-index="${i}" title="Remove photo ${i+1}" aria-label="Remove photo ${i+1}"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg></button></div>`).join('')}</div>` : ''}`;
+  </div>${photos.length ? `<div class="detail-photo-thumbnails" aria-label="All product photos">${photos.map((item,i)=>`<div class="detail-photo-thumb-item"><button type="button" class="detail-photo-thumb" data-photo-index="${i}" aria-label="Show photo ${i+1}"><img class="detail-photo-thumb-image" src="${esc(src(item))}" alt="" loading="lazy"></button><button type="button" class="detail-thumb-remove" data-remove-index="${i}" title="Remove photo ${i+1}" aria-label="Remove photo ${i+1}"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg></button></div>`).join('')}</div>` : ''}
+  <label class="business-gallery-quick-add"><i class="fa-solid fa-plus"></i> Add photos <input type="file" accept="image/jpeg,image/png,image/webp" multiple class="detail-photos-add" hidden></label>
+  <div class="detail-photo-draft-meta"><span>${photos.length} of 8 photos</span>${draft.dirty ? '<strong role="status">Unsaved photo changes</strong>' : ''}</div>
+  <p class="detail-photo-draft-note">${draft.dirty?'Click Save Changes to apply your photo edits.':'Photo edits are saved with Save Changes.'}</p>`;
   const photoBox = host.querySelector('#detail-photo-box');
   const photoInput = host.querySelector('#detail-photo-input');
   const image = photoBox.querySelector('img');
   const placeholder = host.querySelector('.detail-photo-placeholder');
   const remove = host.querySelector('.detail-photo-remove');
-  function select(path) {
-    selected = path;
-    image.hidden = !path;
-    placeholder.hidden = !!path;
-    placeholder.querySelector('small').textContent = 'Add photo';
-    remove.hidden = !path;
-    if (path) image.src = `${path}?v=${Date.now()}`; else image.removeAttribute('src');
-    host.querySelectorAll('.detail-photo-thumb').forEach(btn=>btn.classList.toggle('is-active', photos[Number(btn.dataset.photoIndex)] === path));
+  function select(index) {
+    draft.selected=index;
+    const item=photos[index]; image.hidden=!item; placeholder.hidden=!!item; remove.hidden=!item;
+    placeholder.querySelector('small').textContent='Add photo';
+    if(item)image.src=src(item); else image.removeAttribute('src');
+    host.querySelectorAll('.detail-photo-thumb').forEach(btn=>btn.classList.toggle('is-active', Number(btn.dataset.photoIndex)===index));
   }
-  select(selected);
-  function setBusy(value) { busy=value; remove.disabled=value; photoInput.disabled=value; host.querySelectorAll('.detail-photo-thumb,.detail-thumb-remove').forEach(b=>b.disabled=value || b.classList.contains('is-unavailable')); }
-  async function refreshGallery(fresh) {
-    if (container.contains(host)) {
-      // Never overwrite unsaved editor fields or local stock counts.
-      product.image_path=fresh.image_path; product.images=fresh.images || [];
-      renderDetailPhotos(product,container);
-    }
-    window.__keepProductSearch=true;
-    try { await refreshInventoryViews(); } catch (_) { /* gallery mutation already saved */ }
+  select(Math.min(draft.selected,Math.max(0,photos.length-1)));
+  function stageFiles(files,replace=false) {
+    if(!files.length)return;
+    const replacing=replace&&photos.length>0;
+    if(photos.length+files.length-(replacing?1:0)>8){showToast('Maximum 8 photos per product.',true);return;}
+    if(files.some(f=>!['image/jpeg','image/png','image/webp'].includes(f.type)||!f.size||f.size>10*1024*1024)){showToast('Choose a valid JPG, PNG or WEBP photo up to 10 MB.',true);return;}
+    const added=files.map(file=>({file,url:URL.createObjectURL(file)}));
+    if(replacing){const old=photos[draft.selected];if(old.file)URL.revokeObjectURL(old.url);photos.splice(draft.selected,1,...added);}
+    else {draft.selected=photos.length;photos.push(...added);}
+    draft.dirty=true;renderDetailPhotos(product,container);
   }
-  photoBox.addEventListener('keydown', event=>{
-    if (event.key !== 'Enter' && event.key !== ' ') return;
-    event.preventDefault(); if (!busy) photoInput.click();
-  });
-  host.querySelectorAll('.detail-photo-thumb').forEach(btn=>btn.addEventListener('click',()=>{if(!busy)select(photos[Number(btn.dataset.photoIndex)]);}));
-  async function removePhoto(path) {
-    if (busy || !path) return;
-    setBusy(true);
+  let confirming=false;
+  async function removePhoto(index) {
+    if(confirming||!photos[index])return;
+    const item=photos[index];confirming=true;
     try {
-      if (!await window.MYRAAUI.confirm('Remove this photo from the product? Other photos, sizes and stock will stay unchanged.', {title:'Remove product photo?',confirmText:'Remove photo',variant:'danger'})) return;
-      if (!container.contains(host)) return;
-      const filename = path.split('/').pop();
-      const fresh = await apiDelete(`${API}/products/${encodeURIComponent(product.sku)}/images/${encodeURIComponent(filename)}`);
-      await refreshGallery(fresh);
-      showToast('Photo removed');
-    } catch (err) { showToast('Could not remove photo: ' + err.message, true); }
-    finally {setBusy(false);}
+      if(!await window.MYRAAUI.confirm('Remove this photo from the pending gallery? The saved product will only change after Save Changes.',{title:'Remove product photo?',confirmText:'Remove photo',variant:'danger'}))return;
+      if(detailPhotoDrafts.get(container)!==draft||!container.contains(host))return;
+      const i=photos.indexOf(item);if(i<0)return;
+      if(item.file)URL.revokeObjectURL(item.url);photos.splice(i,1);
+      if(draft.selected>i)draft.selected--;draft.selected=Math.max(0,Math.min(draft.selected,photos.length-1));
+      draft.dirty=true;renderDetailPhotos(product,container);
+    }finally{confirming=false;}
   }
-  remove.addEventListener('click', event=>{event.preventDefault();event.stopPropagation();void removePhoto(selected);});
-  host.querySelectorAll('.detail-thumb-remove').forEach(btn=>btn.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();void removePhoto(photos[Number(btn.dataset.removeIndex)]);}));
-  photoInput.addEventListener('change', async ()=>{
-    const file=photoInput.files[0]; if(!file || busy)return;
-    setBusy(true);
-    const fd=new FormData(); fd.append('file',file);
-    try {
-      const res=await fetch(`${API}/products/${encodeURIComponent(product.sku)}/image`,{method:'POST',body:fd});
-      if(!res.ok)throw new Error((await res.json()).detail || res.status);
-      const fresh=await getJSON(`${API}/products/${encodeURIComponent(product.sku)}`);
-      await refreshGallery(fresh); showToast('Photo updated');
-    } catch(err){showToast('Upload failed: '+err.message,true);}
-    finally{photoInput.value='';setBusy(false);}
-  });
+  photoBox.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();photoInput.click();}});
+  host.querySelectorAll('.detail-photo-thumb').forEach(btn=>btn.addEventListener('click',()=>select(Number(btn.dataset.photoIndex))));
+  remove.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();void removePhoto(draft.selected);});
+  host.querySelectorAll('.detail-thumb-remove').forEach(btn=>btn.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();void removePhoto(Number(btn.dataset.removeIndex));}));
+  photoInput.addEventListener('change',()=>{stageFiles(Array.from(photoInput.files||[]),true);photoInput.value='';});
+  const add=host.querySelector('.detail-photos-add');add.addEventListener('change',()=>{stageFiles(Array.from(add.files||[]));add.value='';});
 }
 
 // Shared renderer: used by both the Product Detail page and the Scan result
 // panel, so updating a size works identically everywhere.
 function renderDetail(product, container, opts = {}) {
+  const savedDraft=detailPhotoDrafts.get(container);
+  const sameEditor=opts.preserveDraft && savedDraft?.identity===(product.id??product.sku);
+  const fields=sameEditor?Object.fromEntries(['detail-name','detail-sku','detail-category'].map(id=>[id,container.querySelector('#'+id)?.value])):null;
+  if(!sameEditor)discardDetailPhotos(container);
+  else if(!savedDraft.dirty)discardDetailPhotos(container);
   const seats = product.variants.map((v) => `
     <div class="seat" data-code="${esc(v.variant_code)}">
       <div class="seat-size">${esc(v.size)}</div>
@@ -589,6 +600,7 @@ function renderDetail(product, container, opts = {}) {
       <div class="seat-add" id="seat-add"><i class="fa-solid fa-plus"></i> Add size</div>
     </div>`;
 
+  if(fields)for(const [id,value] of Object.entries(fields))if(value!==undefined)container.querySelector('#'+id).value=value;
   window.myraaEnhanceProductDetail?.(product, container, opts);
   container.querySelectorAll(".seat").forEach((seat) => {
     const code = seat.dataset.code;
@@ -661,26 +673,27 @@ function renderDetail(product, container, opts = {}) {
   renderDetailPhotos(product, container);
 
   container.querySelector("#detail-save").addEventListener("click", async () => {
+    const button=container.querySelector('#detail-save');if(button.disabled)return;
     const msg = container.querySelector("#detail-msg");
+    const draft=detailPhotoDrafts.get(container);
+    const metadata={sku:container.querySelector("#detail-sku").value.trim().toUpperCase(),name:container.querySelector("#detail-name").value,category:container.querySelector("#detail-category").value};
+    button.disabled=true;container.inert=true;
     try {
-      const res = await fetch(`${API}/products/${encodeURIComponent(product.sku)}`, {
-        method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sku: container.querySelector("#detail-sku").value.trim().toUpperCase(),
-          name: container.querySelector("#detail-name").value,
-          category: container.querySelector("#detail-category").value,
-        }),
-      });
+      let res;
+      const endpoint=`${API}/products/${encodeURIComponent(product.sku)}`;
+      if(draft?.dirty){
+        const body=new FormData();let index=0;
+        const entries=draft.items.map(item=>{if(!item.file)return item.path;body.append('files',item.file);return index++;});
+        body.append('metadata',JSON.stringify(metadata));body.append('expected',JSON.stringify(draft.baseline));body.append('gallery',JSON.stringify(entries));
+        res=await fetch(endpoint+'/editor-save',{method:'POST',body});
+      }else{res=await fetch(endpoint,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(metadata)});}
       if (!res.ok) { const err = new Error((await res.json()).detail); err.status = res.status; throw err; }
-      msg.textContent = "Saved"; msg.className = "msg success";
-      showToast("Product and Master SKU updated");
-      const saved = await res.json();
-      renderDetail(saved, container, opts);
-      if (opts.showDelete) {
-        window.__keepProductSearch = true;
-        loadLatestProducts();
-      }
-    } catch (err) { msg.textContent = err.message || "Could not save"; msg.className = "msg error"; if (err.status === 409) await window.MYRAAUI.alert(err.message,{title:"Duplicate product or SKU",variant:"warning"}); }
+      const saved=await res.json();
+      if(container.contains(button)){discardDetailPhotos(container);renderDetail(saved,container,opts);}
+      showToast('Product changes saved');
+      if(opts.showDelete){window.__keepProductSearch=true;loadLatestProducts();}
+    } catch(err){msg.textContent=err.message||'Could not save';msg.className='msg error';if(err.status===409)await window.MYRAAUI.alert(err.message,{title:'Could not save product',variant:'warning'});}
+    finally{button.disabled=false;container.inert=false;}
   });
 
   const delBtn = container.querySelector("#detail-delete");
@@ -733,7 +746,7 @@ $("add-size-form")?.addEventListener("submit", async (event) => {
       target_stock_level: $("new-size-target").value === "" ? 20 : Number($("new-size-target").value),
     });
     closeAddSizeModal();
-    renderDetail(updated, pending.container, pending.opts);
+    renderDetail(updated, pending.container, {...pending.opts,preserveDraft:true});
     showToast(`Size ${size.toUpperCase()} added`, "success");
     await refreshInventoryViews();
   } catch (error) {

@@ -100,7 +100,7 @@
     const endpoint = `/api/products/${encodeURIComponent(product.sku)}`;
     const refresh = async () => {
       const data = await json(endpoint);
-      if (typeof window.renderDetail === 'function') window.renderDetail(data,container,{showDelete:Boolean(container.querySelector('#detail-delete'))});
+      if (typeof window.renderDetail === 'function') window.renderDetail(data,container,{showDelete:Boolean(container.querySelector('#detail-delete')),preserveDraft:true});
       else if (typeof window.openProductDetail === 'function') window.openProductDetail(data.sku);
     };
     block.querySelector('.business-save-cost').addEventListener('click',async()=>{
@@ -124,25 +124,7 @@
       try{await json(`${endpoint}/${prefix}/${button.dataset.aliasId}`,{method:'DELETE'});await refresh();}
       catch(err){notice(feedback,err.message,true);}
     }));
-    // The requested compact Add Photos control belongs inside the photo gallery,
-    // directly below the thumbnails. Never at the bottom of the Details page.
-    const gallery=container.querySelector('.detail-photo-gallery');
-    if(gallery){
-      const photoBar=document.createElement('label');
-      photoBar.className='business-gallery-quick-add';
-      photoBar.innerHTML='<i class="fa-solid fa-plus"></i> Add photos <input type="file" accept="image/jpeg,image/png,image/webp" multiple hidden><small class="business-gallery-status" aria-live="polite"></small>';
-      gallery.append(photoBar);
-      photoBar.querySelector('input').addEventListener('change',async(event)=>{
-        const files=Array.from(event.target.files||[]);if(!files.length)return;
-        const status=photoBar.querySelector('small');
-        if(files.length>8){status.textContent='Maximum 8 photos per upload';return;}
-        status.textContent='Uploading…';
-        const body=new FormData();files.forEach(file=>body.append('files',file));
-        try{await json(`${endpoint}/images`,{method:'POST',body});await refresh();}
-        catch(err){status.textContent=err.message;}
-        finally{event.target.value='';}
-      });
-    }
+
   };
 
   // Stock valuation chart (known cost only). Missing-cost pieces are clearly flagged.

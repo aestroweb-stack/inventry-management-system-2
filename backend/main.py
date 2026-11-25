@@ -1,4 +1,5 @@
 import asyncio
+import json
 import hmac
 import os
 import shutil
@@ -156,7 +157,7 @@ async def authenticated_seller_workspace(request: Request, call_next):
         # A consistent on-volume snapshot is captured BEFORE destructive API
         # methods. If the volume is full or the backup cannot be validated,
         # reject the delete instead of losing the only recoverable copy.
-        if request.method == "DELETE" and path.startswith("/api/"):
+        if (request.method == "DELETE" and path.startswith("/api/")) or (request.method == "POST" and path.startswith("/api/products/") and path.endswith("/editor-save")):
             try:
                 await asyncio.to_thread(recovery_service.create_snapshot, account.id, f"Before {request.method} {path[:110]}")
             except Exception:
@@ -700,6 +701,14 @@ def create_product(payload: schemas.ProductCreate, db: Session = Depends(get_db)
 def update_product(sku: str, payload: schemas.ProductUpdate, db: Session = Depends(get_db)):
     lock_catalog(db)
     product = _get_product_by_sku(db, sku)
+    _apply_product_update(db, product, payload)
+    db.commit()
+    db.refresh(product)
+    return _product_out(product)
+
+
+def _apply_product_update(db, product, payload):
+    """Apply normal duplicate/SKU validation without committing."""
     data = payload.model_dump(exclude_unset=True)
     if "name" in data:
         if not design_key(data["name"]) or len(data["name"]) > 300:
@@ -738,9 +747,104 @@ def update_product(sku: str, payload: schemas.ProductUpdate, db: Session = Depen
 
     for field, value in data.items():
         setattr(product, field, value)
-    db.commit()
-    db.refresh(product)
-    return _product_out(product)
+
+
+@app.post("/api/products/{sku}/editor-save", response_model=schemas.ProductOut)
+def save_product_editor(
+    sku: str, background_tasks: BackgroundTasks,
+    metadata: str = Form(...), expected: str = Form(...), gallery: str = Form(...),
+    files: list[UploadFile] = File(default=[]), db: Session = Depends(get_db),
+):
+    """Commit the editor fields and complete staged photo list in one transaction."""
+    try:
+        payload = schemas.ProductUpdate.model_validate_json(metadata)
+        baseline, entries = json.loads(expected), json.loads(gallery)
+        if not isinstance(baseline, list) or not all(isinstance(x, str) for x in baseline):
+            raise ValueError('Invalid original photos')
+        if not isinstance(entries, list) or len(entries) > 8 or len(files) > 8:
+            raise ValueError('Choose up to 8 photos per product')
+        if not all(type(x) is int or isinstance(x, str) for x in entries):
+            raise ValueError('Invalid photo selection')
+        if len(set(entries)) != len(entries) or sorted(x for x in entries if type(x) is int) != list(range(len(files))):
+            raise ValueError('Invalid photo selection')
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(422, 'Invalid editor data. Check product details and the 8-photo limit.') from exc
+    lock_catalog(db)
+    product = _get_product_by_sku(db, sku)
+    current = _product_out(product)['images']
+    if baseline != current:
+        raise HTTPException(409, 'Photos changed in another session. Reopen the product before saving.')
+    if any(isinstance(x, str) and x not in current for x in entries):
+        raise HTTPException(422, 'Photo does not belong to this product.')
+    prepared = []
+    try:
+        for file in files:
+            content = file.file.read(visual_match_service.MAX_SCAN_BYTES + 1)
+            visual_match_service.validate_image(content)
+            prepared.append((content, visual_match_service.image_extension(content)))
+    except visual_match_service.InvalidProductImage as exc:
+        raise HTTPException(400, str(exc)) from exc
+    created = []
+    removed_ids = []
+    removed_paths = set(current) - {x for x in entries if isinstance(x, str)}
+    removable_files = []
+    try:
+        _apply_product_update(db, product, payload)
+        refs = {ref.image_path: ref for ref in product.reference_images}
+        paths = []
+        for entry in entries:
+            if isinstance(entry, str):
+                ref = refs.get(entry)
+                if ref is None:  # legacy main photo without a reference record
+                    ref = models.ProductImage(product_id=product.id, image_path=entry, is_primary=False)
+                    db.add(ref)
+                    refs[entry] = ref
+                paths.append(entry)
+            else:
+                content, ext = prepared[entry]
+                fname = f"{re.sub(r'[^A-Z0-9_-]', '_', product.sku.upper())[:55]}_{uuid.uuid4().hex}{ext}"
+                dest = seller_image_dir() / fname
+                path = f'/static/product_images/{fname}'
+                ref = models.ProductImage(product_id=product.id, image_path=path, is_primary=False)
+                created.append((ref, content, dest))
+                dest.write_bytes(content)
+                db.add(ref)
+                refs[path] = ref
+                paths.append(path)
+        product.image_path = paths[0] if paths else None
+        for path, ref in refs.items():
+            if path not in paths:
+                removed_ids.append(ref.id)
+                product.reference_images.remove(ref)
+            else:
+                ref.is_primary = path == product.image_path
+        db.flush()
+        for path in removed_paths:
+            if not (db.query(models.Product.id).filter(models.Product.image_path == path).first()
+                    or db.query(models.ProductImage.id).filter(models.ProductImage.image_path == path).first()):
+                if path.startswith('/static/product_images/') and re.fullmatch(r'[a-zA-Z0-9_.-]{1,250}', Path(path).name) and not Path(path).name.startswith('.'):
+                    removable_files.append(seller_image_dir() / Path(path).name)
+        product_id = product.id
+        pending_index = [(ref.id, content, dest) for ref, content, dest in created]
+        db.commit()
+    except Exception:
+        db.rollback()
+        for _, _, dest in created:
+            dest.unlink(missing_ok=True)
+        raise
+    if db.get_bind().dialect.name == 'sqlite':
+        for image_id in removed_ids:
+            visual_search_service.remove_product_embedding(db, product_id, image_id)
+    visual_search_service.clear_visual_cache()
+    for dest in removable_files:
+        try:
+            dest.unlink(missing_ok=True)
+        except OSError:
+            logger.warning('Editor photo reference removed; file cleanup failed')
+    for image_id, content, dest in pending_index:
+        background_tasks.add_task(_index_product_photo_background, product_id, image_id, content, str(dest), int(tenant_id()))
+    db.expire_all()
+    return _product_out(_get_product_by_sku(db, product.sku))
 
 
 @app.post("/api/products/{sku}/variants", response_model=schemas.ProductOut)
