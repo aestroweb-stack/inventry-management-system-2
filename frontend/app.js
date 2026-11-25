@@ -356,20 +356,38 @@ $("movers-export")?.addEventListener("click", async () => {
   } catch (error) { showToast("Could not download Top Movers: " + error.message, true); }
   finally { button.disabled=false; }
 });
+// Keep the on-screen list compact; the export still contains all eight ranked designs.
+const MOVERS_PAGE_SIZE = 4;
+let moversRows = [], moversPage = 0, moversRequest = 0;
+function renderMoversPage() {
+  const box = $("movers-chart"), pager = $("movers-pagination");
+  const total = moversRows.length;
+  moversPage = Math.max(0, Math.min(moversPage, Math.ceil(total / MOVERS_PAGE_SIZE) - 1));
+  pager.hidden = total <= MOVERS_PAGE_SIZE;
+  if (!total) { box.innerHTML = `<p class="hint movers-empty">No orders processed yet in this period.</p>`; return; }
+  const max = Math.max(...moversRows.map(m => Number(m.units_moved) || 0), 1);
+  const offset = moversPage * MOVERS_PAGE_SIZE;
+  box.innerHTML = moversRows.slice(offset, offset + MOVERS_PAGE_SIZE).map((m, index) => `
+    <div class="chart-row">
+      <div class="movers-rank">${offset + index + 1}</div>
+      <div class="movers-design"><div class="chart-label" title="${esc(m.sku)}">${esc(m.name || m.sku)}</div><div class="chart-bar-track"><div class="chart-bar" style="width:${Math.min(100, Math.max(0, (Number(m.units_moved) || 0) / max * 100))}%"></div></div></div>
+      <div class="chart-val">${esc(m.units_moved)}</div>
+    </div>`).join("");
+  $("movers-page").textContent = `${offset + 1}–${Math.min(offset + MOVERS_PAGE_SIZE,total)} of ${total}`;
+  $("movers-prev").disabled = moversPage === 0;
+  $("movers-next").disabled = offset + MOVERS_PAGE_SIZE >= total;
+}
+$("movers-prev").addEventListener("click", () => { if (moversPage > 0) { moversPage--; renderMoversPage(); } });
+$("movers-next").addEventListener("click", () => { if ((moversPage + 1) * MOVERS_PAGE_SIZE < moversRows.length) { moversPage++; renderMoversPage(); } });
 async function loadMoversChart() {
-  const box = $("movers-chart");
+  const box = $("movers-chart"), request = ++moversRequest;
   try {
     const days = $("movers-days").value;
     const movers = await getJSON(`${API}/analytics/movers?days=${days}&limit=8`);
-    if (!movers.length) { box.innerHTML = `<p class="hint">No orders processed yet in this period.</p>`; return; }
-    const max = Math.max(...movers.map((m) => m.units_moved), 1);
-    box.innerHTML = movers.map((m) => `
-      <div class="chart-row">
-        <div class="chart-label" title="${esc(m.name)}">${esc(m.sku)}</div>
-        <div class="chart-bar-track"><div class="chart-bar" style="width:${Math.max(4, (m.units_moved / max) * 100)}%"></div></div>
-        <div class="chart-val">${m.units_moved}</div>
-      </div>`).join("");
-  } catch (e) { box.innerHTML = `<p class="hint">Could not load chart.</p>`; }
+    if (request !== moversRequest) return;
+    moversRows = Array.isArray(movers) ? movers.slice(0,8) : [];
+    moversPage = 0; renderMoversPage();
+  } catch (e) { if (request === moversRequest) { moversRows=[]; moversPage=0; $("movers-pagination").hidden=true; box.innerHTML = `<p class="hint movers-empty">Could not load chart.</p>`; } }
 }
 
 // ================================================================ //
@@ -469,7 +487,7 @@ function renderDetailPhotos(product, container) {
       <img alt="${esc(product.name)}" hidden><input type="file" accept="image/*" id="detail-photo-input" hidden>
     </label>
     <button class="detail-photo-remove" type="button" title="Remove selected photo" aria-label="Remove selected photo" hidden><i class="fa-solid fa-trash-can" aria-hidden="true"></i></button>
-  </div>${photos.length ? `<div class="detail-photo-thumbnails" aria-label="All product photos">${photos.map((path,i)=>`<div class="detail-photo-thumb-item"><button type="button" class="detail-photo-thumb" data-photo-index="${i}" aria-label="Show photo ${i+1}"><img class="detail-photo-thumb-image" src="${esc(path)}?v=${Date.now()}" alt="" loading="lazy"></button><button type="button" class="detail-thumb-remove" data-remove-index="${i}" title="Remove photo ${i+1}" aria-label="Remove photo ${i+1}"><span aria-hidden="true">×</span></button></div>`).join('')}</div>` : ''}`;
+  </div>${photos.length ? `<div class="detail-photo-thumbnails" aria-label="All product photos">${photos.map((path,i)=>`<div class="detail-photo-thumb-item"><button type="button" class="detail-photo-thumb" data-photo-index="${i}" aria-label="Show photo ${i+1}"><img class="detail-photo-thumb-image" src="${esc(path)}?v=${Date.now()}" alt="" loading="lazy"></button><button type="button" class="detail-thumb-remove" data-remove-index="${i}" title="Remove photo ${i+1}" aria-label="Remove photo ${i+1}"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg></button></div>`).join('')}</div>` : ''}`;
   const photoBox = host.querySelector('#detail-photo-box');
   const photoInput = host.querySelector('#detail-photo-input');
   const image = photoBox.querySelector('img');
@@ -840,7 +858,7 @@ function refreshProductPhotoSelection() {
     remove.type = "button";
     remove.className = "add-photo-remove";
     remove.setAttribute("aria-label", `Remove ${file.name}`);
-    remove.innerHTML = '<i class="fa-solid fa-xmark" aria-hidden="true"></i>';
+    remove.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg>';
     remove.addEventListener("click", () => removeProductPhoto(file));
     card.append(image, caption, remove);
     thumbnailStrip.appendChild(card);

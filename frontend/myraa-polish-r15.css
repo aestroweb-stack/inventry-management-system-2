@@ -1,0 +1,61 @@
+/* R15: final scoped mobile controls, compact dashboard and dark-mode contrast. */
+#stage .ps-history-filters {display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;min-width:0;}
+#stage .ps-history-filters .ps-history-date-field {display:grid;gap:5px;flex:1 1 145px;min-width:0;max-width:100%;font-size:11px;font-weight:700;color:var(--ink-soft);}
+#stage .ps-history-date-field .ps-date-control {position:relative;display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:44px;min-width:0;padding:10px 12px;box-sizing:border-box;border:1px solid var(--line);border-radius:10px;background:var(--input-surface,var(--panel));color:var(--ink);font-size:13px;font-weight:500;}
+#stage .ps-date-control>span {overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;}
+#stage .ps-date-control>svg {flex:none;color:var(--ink-soft);}
+#stage .ps-date-control:focus-within {outline:2px solid #30a982;outline-offset:2px;}
+#stage .ps-date-control #ps-history-date {position:absolute;inset:0;width:100%;height:100%;min-height:0;margin:0;opacity:0;cursor:pointer;z-index:1;}
+#stage .ps-date-control #ps-history-date::-webkit-calendar-picker-indicator {position:absolute;inset:0;width:100%;height:100%;padding:0;margin:0;cursor:pointer;}
+#stage .ps-history-filters #ps-history-group {flex:1 1 140px;min-width:0;height:44px;}
+#stage .ps-history-filters #ps-history-clear {min-height:44px!important;}
+@media(max-width:600px){#stage .ps-history-filters {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:end;}#stage .ps-history-filters #ps-history-group{width:100%;}#stage .ps-history-filters #ps-history-clear{grid-column:1/-1;width:100%;}}
+@media(max-width:350px){#stage .ps-history-filters{grid-template-columns:minmax(0,1fr);}}
+/* Top Movers: avoid inherited chart minimum heights; four rows, two pages, one compact toolbar. */
+#stage #view-dashboard .myraa-movers-panel {min-height:0;align-self:start;min-width:0;container-type:inline-size;}
+#stage .myraa-movers-panel .chart-head {display:grid;grid-template-columns:minmax(0,1fr);gap:12px;align-items:start;margin-bottom:12px;}
+#stage .myraa-movers-panel .myraa-movers-actions {display:grid;grid-template-columns:minmax(0,1fr) minmax(0,auto);gap:8px;align-items:center;justify-content:stretch;width:100%;}
+#stage .myraa-movers-panel .myraa-movers-actions .input,#stage .myraa-movers-panel #movers-export {box-sizing:border-box;width:100%;min-width:0;max-width:100%;height:42px!important;min-height:42px!important;padding:8px 10px!important;font-size:12px!important;line-height:1.2;}
+#stage .myraa-movers-panel #movers-export {display:flex!important;align-items:center;justify-content:center;gap:6px;white-space:nowrap!important;background:#08765a;color:#fff;border:1px solid #08765a;border-radius:9px;}
+#stage .myraa-movers-panel #movers-export:hover:not(:disabled) {background:#056149;}
+#stage #view-dashboard .myraa-movers-panel #movers-chart {min-height:0;margin:0;display:grid;gap:8px;}
+#stage .myraa-movers-panel .movers-empty {margin:0;padding:12px 0;line-height:1.5;}
+#stage .myraa-movers-panel .chart-row {display:grid;grid-template-columns:22px minmax(0,1fr) minmax(28px,auto);align-items:center;gap:8px;margin:0;padding:5px 0;min-width:0;}
+#stage .myraa-movers-panel .movers-rank {font-size:11px;font-weight:700;color:var(--ink-soft);background:var(--surface-muted);border-radius:5px;text-align:center;padding:4px 0;}
+#stage .myraa-movers-panel .movers-design {display:grid;gap:5px;min-width:0;}
+#stage .myraa-movers-panel .chart-label {width:auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink);font-size:12px;}
+#stage .myraa-movers-panel .chart-bar-track {height:7px;background:var(--surface-muted);}
+#stage .myraa-movers-panel .chart-val {width:auto;color:var(--ink);font-size:12px;}
+#stage .movers-pagination:not([hidden]) {display:flex;justify-content:space-between;align-items:center;gap:5px;margin-top:12px;min-width:0;}
+#stage .movers-pagination[hidden] {display:none!important;}
+#stage .movers-pagination button {width:auto!important;flex:0 1 auto!important;min-width:0!important;min-height:32px!important;height:auto!important;padding:6px 8px!important;font-size:11px!important;white-space:nowrap!important;}
+#stage .movers-pagination span {color:var(--ink-soft);font-size:11px;font-variant-numeric:tabular-nums;text-align:center;white-space:nowrap;}
+@container(max-width:245px){#stage .myraa-movers-panel .myraa-movers-actions {grid-template-columns:minmax(0,1fr);}}
+@media(max-width:767px){#stage #view-dashboard .dashboard-analytics-grid {align-items:start;}}
+/* Inset thumbnail action: no oversized floating bubble, consistent add and edit. */
+#stage .detail-photo-editor .detail-photo-thumbnails {gap:8px;padding:4px 0;align-items:start;}
+#stage .detail-photo-editor .detail-photo-thumb-item {flex:0 0 70px;width:70px;height:72px;}
+#stage .detail-photo-editor .detail-photo-thumb-item .detail-photo-thumb {display:grid;place-items:center;width:70px!important;height:72px!important;min-height:72px!important;max-height:72px!important;padding:3px;border-radius:9px;overflow:hidden;}
+#stage .detail-photo-editor .detail-photo-thumb-image {width:100%;height:100%;min-height:0;max-height:100%;object-fit:contain;border-radius:5px;}
+#stage .detail-photo-editor .detail-thumb-remove,#add-product-modal .add-photo-thumbnail .add-photo-remove {position:absolute;top:4px;right:4px;inset-block-start:4px;inset-inline-end:4px;z-index:2;display:grid!important;place-items:center;box-sizing:border-box;width:26px!important;min-width:26px!important;max-width:26px!important;height:26px!important;min-height:26px!important;max-height:26px!important;padding:0!important;margin:0!important;flex:none!important;border:1px solid #e4a6ad;border-radius:7px;background:#fff2f3;color:#a51f33;box-shadow:0 1px 3px #0002;line-height:1;cursor:pointer;}
+#stage .detail-photo-editor .detail-thumb-remove svg,#add-product-modal .add-photo-remove svg {display:block;width:14px;height:14px;pointer-events:none;}
+#stage .detail-photo-editor .detail-thumb-remove:hover:not(:disabled),#add-product-modal .add-photo-remove:hover:not(:disabled) {background:#b42334;color:white;border-color:#b42334;}
+#stage .detail-photo-editor .detail-thumb-remove:focus-visible,#add-product-modal .add-photo-remove:focus-visible {outline:2px solid #e05565;outline-offset:2px;}
+#add-product-modal .add-photo-thumbnail {flex:0 0 82px;width:82px;max-width:100%;padding:4px;box-sizing:border-box;}
+#add-product-modal .add-photo-thumbnail img {height:64px;}
+@media(pointer:coarse){#stage .detail-photo-editor .detail-thumb-remove,#add-product-modal .add-photo-thumbnail .add-photo-remove {width:30px!important;min-width:30px!important;max-width:30px!important;height:30px!important;min-height:30px!important;max-height:30px!important;}}
+/* Do not change global primary colors (used as backgrounds). Fix foregrounds only. */
+:root[data-theme="dark"] #stage :is(.section-eyebrow,.panel h2>i,.view-head h1>i,.packing-grid h2>i,.packing-drop>i),
+:root[data-theme="dark"] #add-product-modal :is(.photo-pick-note strong,#add-photo-placeholder i,.photo-angle-thumb,.myraa-editor-section-head h3 i),
+:root[data-theme="dark"] #bulk-product-panel .bulk-excel-note i {color:#91e5c3!important;}
+:root[data-theme="dark"] #add-product-modal :is(.photo-pick-note,.add-photo-thumbnail-fallback,.photo-angle-label,.add-photo-thumbnail>span),
+:root[data-theme="dark"] #bulk-product-panel .bulk-excel-note,
+:root[data-theme="dark"] #stage :is(.packing-drop>span,.packing-stats span,.packing-sample-head>span,.ps-issue,.business-product-card header p,.business-product-card h4,.business-design-table th) {color:#c4e4d6!important;}
+:root[data-theme="dark"] #stage .business-cost-total strong {color:#a1efca!important;}
+:root[data-theme="dark"] #stage .detail-photo-editor .detail-photo-thumb.is-active {border-color:#7cdbb6;box-shadow:0 0 0 1px #7cdbb6;}
+:root[data-theme="dark"] #stage .detail-photo-editor .detail-thumb-remove,:root[data-theme="dark"] #add-product-modal .add-photo-thumbnail .add-photo-remove {background:#472b32;border-color:#b26c77;color:#ffd0d5;}
+:root[data-theme="dark"] #stage .detail-photo-editor .detail-thumb-remove:hover:not(:disabled),:root[data-theme="dark"] #add-product-modal .add-photo-remove:hover:not(:disabled) {background:#b42334;color:#fff;}
+:root[data-theme="dark"] #stage .ps-date-control {border-color:#4a806e;}
+:root[data-theme="dark"] #stage .myraa-movers-panel #movers-export {background:#08765a;border-color:#5caa91;color:#fff;}
+:root[data-theme="dark"] input[type="date"] {color-scheme:dark;}
+:root[data-theme="dark"] #stage .myraa-edit-page-head h1>i,:root[data-theme="dark"] #add-product-modal .modal-head h2>i {color:#91e5c3!important;}
