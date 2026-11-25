@@ -16,10 +16,9 @@ document.addEventListener("error", (event) => {
     placeholder.innerHTML = '<i class="fa-solid fa-image" aria-hidden="true"></i><span>Photo unavailable</span>';
     image.replaceWith(placeholder);
   } else if (image.matches(".detail-photo-box img")) {
-    const placeholder = document.createElement("span");
-    placeholder.className = "detail-photo-failed";
-    placeholder.textContent = "Photo unavailable · click to replace";
-    image.replaceWith(placeholder);
+    image.hidden = true;
+    const fallback = image.parentElement.querySelector('.detail-photo-placeholder');
+    if (fallback) { fallback.hidden = false; fallback.querySelector('small').textContent = 'Photo unavailable · click to replace'; }
   } else if (image.classList.contains("detail-photo-thumb-image")) {
     const button = image.closest("button");
     if (button) {
@@ -470,7 +469,7 @@ function renderDetailPhotos(product, container) {
       <img alt="${esc(product.name)}" hidden><input type="file" accept="image/*" id="detail-photo-input" hidden>
     </label>
     <button class="detail-photo-remove" type="button" title="Remove selected photo" aria-label="Remove selected photo" hidden><i class="fa-solid fa-trash-can" aria-hidden="true"></i></button>
-  </div>${photos.length > 1 ? `<div class="detail-photo-thumbnails" aria-label="All product photos">${photos.map((path,i)=>`<button type="button" class="detail-photo-thumb" data-photo-index="${i}" aria-label="Show photo ${i+1}"><img class="detail-photo-thumb-image" src="${esc(path)}?v=${Date.now()}" alt="" loading="lazy"></button>`).join('')}</div>` : ''}`;
+  </div>${photos.length ? `<div class="detail-photo-thumbnails" aria-label="All product photos">${photos.map((path,i)=>`<div class="detail-photo-thumb-item"><button type="button" class="detail-photo-thumb" data-photo-index="${i}" aria-label="Show photo ${i+1}"><img class="detail-photo-thumb-image" src="${esc(path)}?v=${Date.now()}" alt="" loading="lazy"></button><button type="button" class="detail-thumb-remove" data-remove-index="${i}" title="Remove photo ${i+1}" aria-label="Remove photo ${i+1}"><span aria-hidden="true">×</span></button></div>`).join('')}</div>` : ''}`;
   const photoBox = host.querySelector('#detail-photo-box');
   const photoInput = host.querySelector('#detail-photo-input');
   const image = photoBox.querySelector('img');
@@ -480,12 +479,13 @@ function renderDetailPhotos(product, container) {
     selected = path;
     image.hidden = !path;
     placeholder.hidden = !!path;
+    placeholder.querySelector('small').textContent = 'Add photo';
     remove.hidden = !path;
     if (path) image.src = `${path}?v=${Date.now()}`; else image.removeAttribute('src');
     host.querySelectorAll('.detail-photo-thumb').forEach(btn=>btn.classList.toggle('is-active', photos[Number(btn.dataset.photoIndex)] === path));
   }
   select(selected);
-  function setBusy(value) { busy=value; remove.disabled=value; photoInput.disabled=value; host.querySelectorAll('.detail-photo-thumb').forEach(b=>b.disabled=value); }
+  function setBusy(value) { busy=value; remove.disabled=value; photoInput.disabled=value; host.querySelectorAll('.detail-photo-thumb,.detail-thumb-remove').forEach(b=>b.disabled=value || b.classList.contains('is-unavailable')); }
   async function refreshGallery(fresh) {
     if (container.contains(host)) {
       // Never overwrite unsaved editor fields or local stock counts.
@@ -500,10 +500,9 @@ function renderDetailPhotos(product, container) {
     event.preventDefault(); if (!busy) photoInput.click();
   });
   host.querySelectorAll('.detail-photo-thumb').forEach(btn=>btn.addEventListener('click',()=>{if(!busy)select(photos[Number(btn.dataset.photoIndex)]);}));
-  remove.addEventListener('click', async event=>{
-    event.preventDefault(); event.stopPropagation();
-    if (busy || !selected) return;
-    const path = selected; setBusy(true);
+  async function removePhoto(path) {
+    if (busy || !path) return;
+    setBusy(true);
     try {
       if (!await window.MYRAAUI.confirm('Remove this photo from the product? Other photos, sizes and stock will stay unchanged.', {title:'Remove product photo?',confirmText:'Remove photo',variant:'danger'})) return;
       if (!container.contains(host)) return;
@@ -513,7 +512,9 @@ function renderDetailPhotos(product, container) {
       showToast('Photo removed');
     } catch (err) { showToast('Could not remove photo: ' + err.message, true); }
     finally {setBusy(false);}
-  });
+  }
+  remove.addEventListener('click', event=>{event.preventDefault();event.stopPropagation();void removePhoto(selected);});
+  host.querySelectorAll('.detail-thumb-remove').forEach(btn=>btn.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();void removePhoto(photos[Number(btn.dataset.removeIndex)]);}));
   photoInput.addEventListener('change', async ()=>{
     const file=photoInput.files[0]; if(!file || busy)return;
     setBusy(true);
@@ -550,13 +551,13 @@ function renderDetail(product, container, opts = {}) {
       <div class="detail-info">
         <input class="input" id="detail-name" value="${esc(product.name)}" placeholder="Product name">
         <div class="detail-info-row">
-          <input class="input" id="detail-sku" value="${esc(product.sku)}" placeholder="Canonical SKU">
-          <input class="input" id="detail-category" placeholder="Category" value="${esc(product.category || "")}">
+          <label class="detail-master-field"><span>Master SKU</span><input class="input" id="detail-sku" value="${esc(product.sku)}" placeholder="Master SKU"></label>
+          <label class="detail-master-field"><span>Category</span><input class="input" id="detail-category" placeholder="Category" value="${esc(product.category || "")}"></label>
         </div>
         <div class="detail-actions">
           <button class="btn-secondary" id="detail-save" type="button"><i class="fa-solid fa-floppy-disk"></i> Save Changes</button>
           <div class="product-label-actions" aria-label="Product labels">
-            <a class="btn-ghost product-label-link" href="${API}/products/${encodeURIComponent(product.sku)}/qr" target="_blank" rel="noopener" title="Open product QR label"><i class="fa-solid fa-qrcode"></i><span>QR code</span></a>
+            <a class="btn-ghost product-label-link" href="${API}/products/${encodeURIComponent(product.sku)}/qr?v=nov25-r14" target="_blank" rel="noopener" title="Open product QR label"><i class="fa-solid fa-qrcode"></i><span>QR code</span></a>
           </div>
           <span class="sku-tag" style="align-self:center;">${esc(product.sku)}</span>
           ${opts.showDelete ? `<button class="btn-danger" id="detail-delete" type="button" style="margin-left:auto;"><i class="fa-solid fa-trash-can"></i> Delete Product</button>` : ""}
@@ -654,7 +655,7 @@ function renderDetail(product, container, opts = {}) {
       });
       if (!res.ok) { const err = new Error((await res.json()).detail); err.status = res.status; throw err; }
       msg.textContent = "Saved"; msg.className = "msg success";
-      showToast("Product + canonical SKU updated");
+      showToast("Product and Master SKU updated");
       const saved = await res.json();
       renderDetail(saved, container, opts);
       if (opts.showDelete) {
@@ -2152,9 +2153,9 @@ function selectLabelProduct(product) {
   $("label-results").innerHTML = "";
   $("label-selected").hidden = false;
   $("label-selected-name").textContent = `${product.sku} — ${product.name}`;
-  $("label-size-summary").textContent = `${product.variants.length} size${product.variants.length === 1 ? "" : "s"} · QR code opens the complete design`;
+  $("label-size-summary").textContent = `${product.variants.length} size${product.variants.length === 1 ? "" : "s"} · Compact QR sticker · opens all sizes`;
   const base = `${API}/products/${encodeURIComponent(product.sku)}`;
-  $("product-qr-download").href = `${base}/qr`;
+  $("product-qr-download").href = `${base}/qr?v=nov25-r14`;
   $("product-qr-download").download = `${product.sku}_qr.png`;
 }
 

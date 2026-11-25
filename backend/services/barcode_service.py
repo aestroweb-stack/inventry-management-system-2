@@ -139,23 +139,41 @@ def generate_product_combo_label(sku: str, product_name: str) -> bytes:
 
 
 def generate_product_qr_label(sku: str, product_name: str) -> bytes:
-    """Create one design-level QR that opens every size in the inventory UI."""
-    qr = qrcode.QRCode(version=None, error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=12, border=3)
-    qr.add_data(f"PRODUCT:{sku.strip().upper()}")
+    """Compact 300-DPI design sticker with a full four-module QR quiet zone."""
+    value = sku.strip().upper()
+    qr = qrcode.QRCode(version=None, error_correction=qrcode.constants.ERROR_CORRECT_M,
+                       box_size=1, border=4)
+    qr.add_data(f"PRODUCT:{value}")
     qr.make(fit=True)
+    # Integer pixels per module avoid blur. Enlarge unusually dense codes
+    # rather than sacrificing the four-module quiet zone or module size.
+    modules = qr.modules_count + 8
+    dpi = 300
+    width = max(round(30 * dpi / 25.4), modules * 4 + 16)
+    qr.box_size = max(4, (width - 16) // modules)
     qr_image = qr.make_image(fill_color="black", back_color="white").convert("RGB")
-    width = max(520, qr_image.width + 80)
-    height = qr_image.height + 150
+    font = _font(22)
+    measure = ImageDraw.Draw(Image.new("RGB", (1, 1)))
+    # Preserve the full human-readable SKU, wrapping without changing payload.
+    lines = []
+    line = ""
+    for char in value:
+        if line and measure.textlength(line + char, font=font) > width - 16:
+            lines.append(line)
+            line = ""
+        line += char
+    if line:
+        lines.append(line)
+    line_height = 28
+    height = max(round(35 * dpi / 25.4), qr_image.height + 12 + len(lines) * line_height + 8)
     canvas = Image.new("RGB", (width, height), "white")
-    canvas.paste(qr_image, ((width - qr_image.width) // 2, 12))
+    canvas.paste(qr_image, ((width - qr_image.width) // 2, 4))
     draw = ImageDraw.Draw(canvas)
-    title_font, code_font = _font(22), _font(20)
-    title = product_name[:48]
-    for text, font, y in ((title, title_font, qr_image.height + 32), (sku.upper(), code_font, qr_image.height + 76)):
-        bbox = draw.textbbox((0, 0), text, font=font)
-        draw.text(((width - (bbox[2] - bbox[0])) / 2, y), text, fill="black", font=font)
+    for i, text in enumerate(lines):
+        draw.text((width / 2, qr_image.height + 9 + i * line_height), text,
+                  fill="black", font=font, anchor="mt")
     out = BytesIO()
-    canvas.save(out, format="PNG", optimize=True)
+    canvas.save(out, format="PNG", optimize=True, dpi=(dpi, dpi))
     return out.getvalue()
 
 

@@ -118,3 +118,21 @@
 :root[data-theme="dark"] .detail-photo-stage .detail-photo-remove {background:#43282c;border-color:#8f4650;color:#ffc0c7;}
 :root[data-theme="dark"] .detail-photo-stage .detail-photo-remove:hover {background:#b42334;color:white;}
 @media(max-width:600px){#bulk-product-panel .bulk-product-actions{flex-direction:column;align-items:stretch;}#bulk-product-panel .bulk-product-actions .btn-primary{width:100%;}.detail-photo-stage .detail-photo-remove{width:40px;height:40px;min-height:40px;max-height:40px;min-width:40px;}}
+
+/* R14: independent thumbnail remove targets and readable product fields. */
+.detail-photo-editor .detail-photo-thumbnails{display:flex;flex-wrap:wrap;gap:10px;padding:10px 6px 6px;overflow:visible;align-items:flex-start;min-width:0;}
+.detail-photo-editor .detail-photo-thumb-item{position:relative;flex:0 0 54px;width:54px;min-width:0;}
+.detail-photo-editor .detail-photo-thumb-item .detail-photo-thumb{box-sizing:border-box;width:54px!important;height:62px!important;min-width:0!important;min-height:0!important;max-height:62px!important;padding:2px;flex:none!important;}
+.detail-photo-editor .detail-thumb-remove{position:absolute;top:-7px;right:-6px;z-index:2;display:grid;place-items:center;box-sizing:border-box;width:24px!important;height:24px!important;min-width:24px!important;min-height:24px!important;max-height:24px!important;flex:none!important;padding:0!important;border:1px solid #fff;border-radius:50%;background:#b42334;color:#fff;font-size:19px;font-weight:700;line-height:1;cursor:pointer;box-shadow:0 2px 5px #0003;}
+.detail-photo-editor .detail-thumb-remove:hover{background:#8f1728;}
+.detail-photo-editor .detail-thumb-remove:focus-visible{outline:2px solid #e05565;outline-offset:2px;}
+.detail-photo-editor .detail-thumb-remove:disabled{opacity:.55;cursor:wait;}
+.detail-master-field{display:grid;gap:5px;min-width:0;color:var(--ink-soft);font-size:12px;font-weight:700;}
+.detail-master-field .input{width:100%;min-width:0;}
+#view-labels .qr-print-note{margin:12px 0 0;line-height:1.5;overflow-wrap:anywhere;}
+/* Dark-mode fixes scoped to actual low-contrast product and label controls. */
+:root[data-theme="dark"] .detail-master-field,:root[data-theme="dark"] .detail-photo-placeholder,:root[data-theme="dark"] .detail-photo-failed,:root[data-theme="dark"] .detail-photo-thumb.is-unavailable,:root[data-theme="dark"] .detail-info .sku-tag,:root[data-theme="dark"] .business-size-report>small,:root[data-theme="dark"] .business-alias small,:root[data-theme="dark"] #view-labels .qr-print-note{color:#c4e4d6;}
+:root[data-theme="dark"] .business-gallery-quick-add,:root[data-theme="dark"] .business-remove-alias,:root[data-theme="dark"] .business-message:not(.is-error),:root[data-theme="dark"] .seat-add,:root[data-theme="dark"] .seat-del{color:#a5e8cb;}
+:root[data-theme="dark"] .business-message.is-error,:root[data-theme="dark"] .seat-del:hover{color:#ffc1c9;}
+:root[data-theme="dark"] .business-alias code,:root[data-theme="dark"] .business-size-summary,:root[data-theme="dark"] .business-add-alias-fields label,:root[data-theme="dark"] #view-labels .result-row{color:#edfdf5;}
+:root[data-theme="dark"] .detail-master-field .input::placeholder,:root[data-theme="dark"] #view-labels .input::placeholder{color:#b9d9cc;opacity:1;}
