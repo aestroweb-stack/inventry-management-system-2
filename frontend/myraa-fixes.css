@@ -92,3 +92,11 @@
 :root[data-theme="dark"] #myraa-challan-studio .myraa-period-month {--period-bg:#193c51; --period-border:#2b566c; --period-accent:#a5d6ff; --period-text:#edf7ff; --period-muted:#b9d5e9; --period-icon:#234f68; --period-rule:#3b6178;}
 :root[data-theme="dark"] #myraa-challan-studio .myraa-period-all {--period-bg:#392c4b; --period-border:#58416d; --period-accent:#dec2ff; --period-text:#fbf3ff; --period-muted:#d6c3e9; --period-icon:#513c69; --period-rule:#634f7a;}
 @media(max-width:480px){#myraa-challan-studio .cs-period-head label{margin-left:0;} #myraa-challan-studio .myraa-period-tile{padding:14px;} #myraa-challan-studio .myraa-period-section{margin-bottom:20px;}}
+
+/* R10: compact Top Movers controls and active designs with zero sizes. */
+#stage .myraa-movers-actions {display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:8px; min-width:0;}
+#stage .myraa-movers-actions .input {width:auto; max-width:100%; min-width:0;}
+#stage .myraa-movers-actions button {width:auto; min-height:36px; white-space:normal;}
+#stage .myraa-no-sizes {display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; min-width:0; min-height:112px; padding:16px; text-align:center; border:1px dashed var(--line, #85a99b); border-radius:12px;}
+#stage .myraa-no-sizes i {font-size:22px; color:var(--accent, #15966f);}
+@media(max-width:600px){#stage .chart-head:has(.myraa-movers-actions){flex-wrap:wrap; align-items:flex-start;} #stage .myraa-movers-actions{width:100%; justify-content:flex-start;} #stage .myraa-movers-actions>*{flex:1 1 110px;}}

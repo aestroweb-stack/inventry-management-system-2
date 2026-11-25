@@ -44,7 +44,7 @@ def test_unknown_conflicting_size_and_brand_review(session):
 def test_fallback_and_legacy_prefix_ignored(session):
     files=[('file.csv',b'SKU,Qty\nMAIN_V_DRESS_S,2\n')]
     assert s.consolidate(session,files,GROUP,'2026-11-25','BETA')['matched_qty']==2
-    assert s.consolidate(session,files,GROUP,'2026-11-25')['review_qty']==2
+    assert s.consolidate(session,files,GROUP,'2026-11-25')['matched_qty']==2  # R10: main name abbreviation included automatically
     assert s.consolidate(session,files,{**GROUP,'master_prefix':'OTHER'},'2026-11-25','BETA')['matched_qty']==2
 
 @pytest.mark.parametrize('qty',['2.5','0','-1','NaN','Infinity'])
@@ -220,3 +220,41 @@ def test_r9_page_limit_and_zero_match_export(session):
         assert c.get(url,params={'page_size':7}).status_code==422
         miss=c.post(b+'/process',files=[('files',('a.csv',b'SKU,Qty\nMISSING,3\n','text/csv'))],data={'group_id':g['id'],'picklist_date':'2026-11-25'}).json()
         assert c.get(b+f'/history/{miss["id"]}/excel',params={'allow_partial':True}).status_code==409
+
+
+def test_r10_independent_main_brands_and_shared_catalog(session):
+    for sku in ('TWINS_V_HELLY_PURPLE','MODA_LP_JUGNI_PINK','TWINS_V_SHARED_BLACK'):
+        p=models.Product(sku=sku,name=sku);session.add(p);session.flush()
+        session.add(models.Variant(product_id=p.id,size='S',variant_code=sku+'-S',current_stock=10))
+    session.commit()
+    twins={'id':1,'name':'TWINS LADY','children':['ANOUK','FUSION']}
+    moda={'id':2,'name':'MODA RAPIDO','children':['H&N','SZN']}
+    def run(g, rows):
+        return s.consolidate(session,[('file.csv',('SKU,Qty\n'+rows).encode())],g,'2026-11-25')
+    a=run(twins,'ANOUK_HELLY_PURPLE_S,3\nTWINS_HELLY_PURPLE_S,2\n')
+    assert a['matched_qty']==5 and a['items'][0]['pick_sku']=='TWINS_V_HELLY_PURPLE_S'
+    b=run(moda,'MODA_JUGNI_PINK_S,3\nSZN_JUGNI_PINK_S,2\nH&N_SHARED_BLACK_S,4\n')
+    assert b['matched_qty']==9 and {x['pick_sku']:x['qty'] for x in b['items']}=={'MODA_LP_JUGNI_PINK_S':5,'TWINS_V_SHARED_BLACK_S':4}
+    assert 'TWINS' not in s.group_brand_lookup(moda)[0]
+    assert run(moda,'UNRELATED_SHARED_BLACK_S,3\n')['review_qty']==3
+    # A second physical master with the same exact suffix is never guessed.
+    p=models.Product(sku='OTHER_LP_SHARED_BLACK',name='other');session.add(p);session.flush();session.add(models.Variant(product_id=p.id,size='S',variant_code=p.sku+'-S',current_stock=1));session.commit()
+    assert run(moda,'H&N_SHARED_BLACK_S,4\n')['review_qty']==4
+    # Group-specific master takes priority when other groups have a similar design.
+    p=models.Product(sku='TWINS_V_JUGNI_PINK',name='other');session.add(p);session.flush();session.add(models.Variant(product_id=p.id,size='S',variant_code=p.sku+'-S',current_stock=1));session.commit()
+    assert run(moda,'SZN_JUGNI_PINK_S,1\n')['items'][0]['pick_sku']=='MODA_LP_JUGNI_PINK_S'
+    assert session.query(models.InventoryTransaction).count()==0
+
+
+def test_r10_party_items_paginate_six(session):
+    app=FastAPI();app.include_router(router);app.dependency_overrides[get_db]=lambda:session
+    for n in range(13):
+        p=models.Product(sku=f'MODA_{n}_DESIGN_BLACK',name=f'design {n}');session.add(p);session.flush();session.add(models.Variant(product_id=p.id,size='S',variant_code=p.sku+'-S',current_stock=0))
+    session.commit()
+    with TestClient(app) as c:
+        b='/api/packing-sync';g=c.post(b+'/groups',json={'name':'MODA RAPIDO','children':['SZN']}).json()
+        payload=('SKU,Qty\n'+''.join(f'MODA_{n}_DESIGN_BLACK_S,1\n' for n in range(13))).encode()
+        r=c.post(b+'/process',files=[('files',('a.csv',payload,'text/csv'))],data={'group_id':g['id'],'picklist_date':'2026-11-25'}).json()
+        assert r['matched_qty']==13 and len(r['party_totals'])==13
+        url=b+f'/history/{r["id"]}'
+        assert [len(c.get(url,params={'page':i,'view':'items'}).json()['rows']) for i in (1,2,3)]==[6,6,1]

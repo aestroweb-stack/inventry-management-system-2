@@ -123,7 +123,7 @@ async def authenticated_seller_workspace(request: Request, call_next):
             request.scope["headers"] = [(k, v) for k, v in request.scope["headers"] if k not in (b"if-none-match", b"if-modified-since")]
             response = await call_next(request)
             response.headers["Cache-Control"] = "no-store, max-age=0"
-            response.headers["X-MYRAA-Release"] = "nov24-r4"
+            response.headers["X-MYRAA-Release"] = "nov25-r10"
             return response
     # The public StaticFiles mount must never serve a legacy/global product
     # photo from a nested path that bypasses the seller-specific image route.
@@ -224,7 +224,7 @@ def auth_logout_deprecated():
 
 @app.get("/api/health")
 def health(response: Response):
-    response.headers["X-MYRAA-Release"] = "nov24-r4"
+    response.headers["X-MYRAA-Release"] = "nov25-r10"
     response.headers["Cache-Control"] = "no-store"
     return {"status": "ok"}
 
@@ -1144,10 +1144,8 @@ def restore_product(sku: str, db: Session = Depends(get_db)):
 
 @app.delete("/api/variants/{variant_code}", response_model=schemas.DeleteResult)
 def delete_variant(variant_code: str, db: Session = Depends(get_db)):
-    """Moves a single size to Trash. If it was the design's last remaining
-    size, the whole design goes to Trash too."""
+    """Archive only the selected size. The product remains active even with zero sizes."""
     variant = _get_variant_by_code(db, variant_code)
-    product = variant.product
     now = datetime.now(timezone.utc)
     variant.is_deleted = True
     variant.deleted_at = now
@@ -1155,15 +1153,8 @@ def delete_variant(variant_code: str, db: Session = Depends(get_db)):
     if open_alert:
         open_alert.resolved = True
         open_alert.resolved_at = now
-    db.flush()
-
-    remaining = db.query(func.count(models.Variant.id)).filter(models.Variant.product_id == product.id, models.Variant.is_deleted == False).scalar()  # noqa: E712
-    product_also_deleted = remaining == 0
-    if product_also_deleted:
-        product.is_deleted = True
-        product.deleted_at = now
     db.commit()
-    return {"deleted": variant.variant_code, "trashed": True, "product_also_deleted": product_also_deleted}
+    return {"deleted": variant.variant_code, "trashed": True, "product_also_deleted": False}
 
 
 @app.post("/api/variants/{variant_code}/restore", response_model=schemas.RestoreResult)
@@ -1846,6 +1837,10 @@ def labels_sheet(variant_codes: str = Query(...), db: Session = Depends(get_db))
 @app.get("/api/analytics/movers", response_model=list[schemas.MoverOut])
 def movers(days: int = Query(30, ge=1, le=365), limit: int = Query(10, ge=1, le=50), db: Session = Depends(get_db)):
     """Top ordered designs. Pending and dispatched orders both count as movement."""
+    return _movers_rows(db, days, limit)
+
+
+def _movers_rows(db: Session, days: int, limit: int):
     since = datetime.now(timezone.utc) - timedelta(days=days)
     rows = (
         db.query(
@@ -1862,7 +1857,18 @@ def movers(days: int = Query(30, ge=1, le=365), limit: int = Query(10, ge=1, le=
             models.OrderLine.status.in_([*ACTIVE_ORDER_STATUSES, models.OrderLineStatus.FULFILLED]),
         )
         .group_by(models.Product.sku, models.Product.name, models.Product.image_path)
-        .order_by(func.sum(models.OrderLine.qty_ordered).desc())
+        .order_by(func.sum(models.OrderLine.qty_ordered).desc(), models.Product.sku.asc())
         .limit(limit).all()
     )
     return [{"sku": r.sku, "name": r.name, "image_path": r.image_path, "units_moved": int(r.units)} for r in rows]
+
+
+@app.get("/api/analytics/movers/export")
+def export_movers(days: int = Query(30, ge=1, le=365), limit: int = Query(8, ge=1, le=50), db: Session = Depends(get_db)):
+    """Download the same ranked designs and period as the dashboard chart."""
+    from services.movers_export import build_movers_workbook
+    content = build_movers_workbook(_movers_rows(db, days, limit), days)
+    return StreamingResponse(BytesIO(content), media_type=XLSX_MEDIA, headers={
+        "Content-Disposition": f"attachment; filename=MYRAA_Top_Movers_{days}d.xlsx",
+        "Cache-Control": "private, no-store",
+    })

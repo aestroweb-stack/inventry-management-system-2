@@ -110,7 +110,12 @@ class CatalogIndex:
         keys={stem}
         if size and not stem.endswith('_'+normalized(size)): keys.add(stem+'_'+normalized(size))
         hits=set().union(*(self.suffixes.get(k,set()) for k in keys))
-        hits={vid for vid in hits if normalized(clean(self.variants[vid].product.sku).split('_',1)[0]) in lookup}
+        scoped={vid for vid in hits if normalized(clean(self.variants[vid].product.sku).split('_',1)[0]) in lookup}
+        # A seller may use one physical master across multiple brand groups.
+        # If the uploaded SKU has a known source prefix, allow a unique exact
+        # design/colour/size suffix outside this group when no local master
+        # exists. Never choose arbitrarily among multiple global candidates.
+        hits=scoped or (hits if prefix else set())
         if len(hits)>1: return None,'Ambiguous registered design/colour/size; register an exact SKU alias'
         if not hits: return None,'SKU not registered in active product catalog'
         v=self.variants[next(iter(hits))]
@@ -163,6 +168,27 @@ def brand_lookup(children):
     return lookup,canonical
 
 
+def group_brand_lookup(group):
+    """Main brand is an implicit member, without editing saved child records.
+
+    A multi-word main name has a conservative first-token abbreviation (MODA,
+    TWINS). Explicit child aliases are never overwritten. A conflicting short
+    alias is not assigned automatically.
+    """
+    children = group['children'] or [group['name']]
+    lookup, canonical = brand_lookup(children)
+    name = group['name']
+    key = normalized(name)
+    if key not in lookup:
+        lookup[key] = name
+        canonical.append(name)
+    main = lookup[key]
+    short = key.split('_', 1)[0]
+    if short != key and short not in lookup:
+        lookup[short] = main
+    return lookup, canonical
+
+
 def source_brand(sku, given, children, default, parsed=None):
     lookup, canonical=parsed or brand_lookup(children)
     if given:
@@ -189,8 +215,8 @@ def master_party(master, prefix=''):
 def consolidate(db, files, group, selected_date, default_brand='', include_audit=False, file_marketplaces=None):
     try: day=date.fromisoformat(selected_date).isoformat()
     except (TypeError,ValueError): raise PicklistError('Picklist date must be YYYY-MM-DD')
-    children=group['children'] or [group['name']]; lookup,canonical=brand_lookup(children)
-    catalog_brands={**lookup,normalized(group['name']):group['name']}
+    children=group['children'] or [group['name']]; lookup,canonical=group_brand_lookup(group)
+    catalog_brands=lookup
     if default_brand and normalized(default_brand) not in lookup:
         raise PicklistError('Fallback brand must belong to selected Main Brand')
     if not files or len(files)>12 or sum(len(p) for _,p in files)>MAX_UPLOAD_BYTES:

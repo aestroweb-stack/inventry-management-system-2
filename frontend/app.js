@@ -343,6 +343,20 @@ $("pg-next").addEventListener("click", () => { inv.offset += PAGE_SIZE; loadInve
 
 // ---------------- Movers chart (hand-drawn bars, no chart library needed) ----------------
 $("movers-days").addEventListener("change", loadMoversChart);
+$("movers-export")?.addEventListener("click", async () => {
+  const button = $("movers-export");
+  if (button.disabled) return;
+  const days = $("movers-days").value;
+  button.disabled = true;
+  try {
+    const response = await fetch(`${API}/analytics/movers/export?days=${encodeURIComponent(days)}&limit=8`);
+    if (!response.ok) throw new Error((await response.json().catch(()=>({}))).detail || `HTTP ${response.status}`);
+    const url = URL.createObjectURL(await response.blob());
+    const link = document.createElement('a'); link.href=url; link.download=`MYRAA_Top_Movers_${days}d.xlsx`;
+    document.body.append(link); link.click(); link.remove(); setTimeout(()=>URL.revokeObjectURL(url), 30000);
+  } catch (error) { showToast("Could not download Top Movers: " + error.message, true); }
+  finally { button.disabled=false; }
+});
 async function loadMoversChart() {
   const box = $("movers-chart");
   try {
@@ -427,7 +441,7 @@ function productCardHTML(p) {
       <div class="pcard-body">
         <div class="pcard-name" title="${esc(p.name)}">${esc(p.name)}</div>
         <div class="pcard-meta"><span class="sku-tag">${esc(p.sku)}</span>${p.category ? " · " + esc(p.category) : ""}</div>
-        <div class="pcard-sizes">${sizes}</div>
+        <div class="pcard-sizes">${sizes || '<span class="hint">No sizes</span>'}</div>
       </div>
     </article>`;
 }
@@ -487,7 +501,7 @@ function renderDetail(product, container, opts = {}) {
     </div>
     <h3 class="sub-head">Sizes</h3>
     <div class="seat-grid">
-      ${seats}
+      ${seats || '<div class="myraa-no-sizes" role="status"><i class="fa-solid fa-box-open" aria-hidden="true"></i><strong>No sizes</strong><span class="hint">Product is saved. Add a size whenever needed.</span></div>'}
       <div class="seat-add" id="seat-add"><i class="fa-solid fa-plus"></i> Add size</div>
     </div>`;
 
@@ -511,13 +525,34 @@ function renderDetail(product, container, opts = {}) {
       } catch (err) { showToast("Update failed: " + err.message, true); } finally {button.disabled=false;}
     });
     seat.querySelector(".seat-del").addEventListener("click", () => {
-      askConfirm(`Delete size ${code}?`, "Moves this size to Trash. You can restore it later.", async () => {
+      askConfirm(`Delete size ${code}?`, "Remove only this size. The product stays saved even when no sizes remain.", async () => {
+        const grid = seat.parentElement;
+        if (!grid || grid.dataset.deletingSize) return;
+        grid.dataset.deletingSize = "1";
+        grid.querySelectorAll(".seat-del").forEach(b => b.disabled = true);
         try {
           const r = await apiDelete(`${API}/variants/${encodeURIComponent(code)}`);
-          if (r.product_also_deleted) { switchView(opts.showDelete ? "products" : "scan"); showToast(`${product.sku} deleted (last size removed)`); }
-          else { seat.remove(); showToast(`${code} deleted`); }
-          loadSummary();
+          if (r.product_also_deleted) {
+            showToast("Server is running an older release. Restore the product from Trash and update before deleting sizes.", true);
+            switchView(opts.showDelete ? "products" : "scan");
+          } else {
+            const fresh = await getJSON(`${API}/products/${encodeURIComponent(product.sku)}`);
+            if (container.contains(seat)) {
+              // Preserve the user's unsaved product metadata and other size counts.
+              Object.assign(product, fresh);
+              seat.remove();
+              if (!product.variants.length && !grid.querySelector('.myraa-no-sizes')) {
+                const empty = document.createElement('div'); empty.className = 'myraa-no-sizes'; empty.setAttribute('role','status');
+                empty.innerHTML = '<i class="fa-solid fa-box-open" aria-hidden="true"></i><strong>No sizes</strong><span class="hint">Product is saved. Add a size whenever needed.</span>';
+                grid.prepend(empty);
+              }
+              window.myraaRefreshDetailValuation?.(fresh, container);
+            }
+            showToast(`${code} deleted`);
+          }
+          await refreshInventoryViews();
         } catch (err) { showToast("Could not delete: " + err.message, true); }
+        finally { delete grid.dataset.deletingSize; grid.querySelectorAll(".seat-del").forEach(b => b.disabled = false); }
       });
     });
   });

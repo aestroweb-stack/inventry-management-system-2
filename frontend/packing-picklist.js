@@ -1,4 +1,4 @@
-/* MYRAA R9: seller-scoped brand groups, catalog matching and dated snapshots. */
+/* MYRAA R10: seller-scoped brand groups, catalog matching and dated snapshots. */
 (() => {
   'use strict';
   const $ = id => document.getElementById(id);
@@ -8,7 +8,7 @@
   const number = n => Number(n || 0).toLocaleString('en-IN');
   const today = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
   const status = $('packing-status'), file=$('packing-file');
-  let groups=[], current=null, editId=null, busy=false, loaded=false, refreshing=null, auditPage=1, partyPage=1, historyPage=1, detailToken=0, partyToken=0, historyToken=0;
+  let groups=[], current=null, editId=null, busy=false, loaded=false, refreshing=null, auditPage=1, partyPage=1, partyTotalsPage=1, historyPage=1, detailToken=0, partyToken=0, historyToken=0;
   let historyRows=new Map();
   $('packing-date').value=today();
   async function api(path, options={}) {
@@ -20,6 +20,7 @@
   function message(text,error=false){status.textContent=text;status.classList.toggle('packing-error',error);}
   function error(e){message(e.message||String(e),true);window.MYRAAUI?.error?.(e.message||String(e));}
   const canonical = x => String(x).split('|')[0].trim();
+  const groupBrands = g => { if (!g) return []; const entries=[...(g.children||[])]; const mainKey=String(g.name).trim().toUpperCase().replace(/[_\s-]+/g,"_"); if(!entries.some(x=>String(x).split("|").some(y=>y.trim().toUpperCase().replace(/[_\s-]+/g,"_")===mainKey))) entries.unshift(g.name); return entries; };
   const group = () => groups.find(g=>String(g.id)===$('ps-group').value);
   function buttons(){
     $('packing-preview').disabled=busy||!group()||!file.files.length||!$('packing-date').value;
@@ -30,7 +31,7 @@
   }
   async function work(fn){if(busy)return;busy=true;buttons();try{if(refreshing)await refreshing;await fn();}catch(e){error(e);}finally{busy=false;buttons();}}
   function options(el, items, placeholder, value){el.innerHTML=`<option value="">${esc(placeholder)}</option>`+items.map(([id,name])=>`<option value="${esc(id)}">${esc(name)}</option>`).join(''); if(items.some(([id])=>String(id)===String(value)))el.value=String(value);}
-  function renderGroup(){const g=group();$('ps-chips').innerHTML=g?g.children.map(x=>`<span class="ps-chip">${esc(x)}</span>`).join(''):'<span class="hint">No group selected</span>';options($('ps-fallback'),(g?.children||[]).map(x=>[canonical(x),canonical(x)]),'Auto · Brand column / SKU prefix','');buttons();}
+  function renderGroup(){const g=group();$('ps-chips').innerHTML=g?groupBrands(g).map(x=>`<span class="ps-chip">${esc(x)}</span>`).join(''):'<span class="hint">No group selected</span>';options($('ps-fallback'),groupBrands(g).map(x=>[canonical(x),canonical(x)]),'Auto · Brand column / SKU prefix','');buttons();}
   async function loadGroups(preferred){
     const previous=preferred??$('ps-group').value;const hist=$('ps-history-group').value;
     groups=await json('/groups');options($('ps-group'),groups.map(g=>[g.id,g.name]),'Choose Main Brand',previous);
@@ -51,18 +52,26 @@
   $('ps-group-library').onclick=e=>{const b=e.target.closest('button[data-group-id]');if(!b||busy)return;const g=groups.find(x=>String(x.id)===b.dataset.groupId);if(g)manager(g);};
   const confirm = async (text,opts) => window.MYRAAUI?.confirm ? window.MYRAAUI.confirm(text,opts) : window.confirm(text);
   $('ps-manage').onclick=()=>manager(group());$('ps-new').onclick=()=>manager(null);$('ps-manager-close').onclick=()=>{$('ps-manager').hidden=true;editId=null;};
-  $('ps-group-form').onsubmit=e=>{e.preventDefault();work(async()=>{const target=editId;const body={name:$('ps-name').value,children:$('ps-children').value.split(/[\n,]+/).map(x=>x.trim()).filter(Boolean)};const g=await json(target!==null?`/groups/${target}`:'/groups',{method:target!==null?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});await loadGroups(g.id);manager(g);message(target===null?'New brand group created. Existing groups retained.':'Selected brand group updated.');});};
-  $('ps-group-delete').onclick=()=>work(async()=>{const target=editId;if(target===null)return;if(!await confirm('Delete this brand group? Saved picklist history and Excel downloads will remain available.',{variant:'danger',title:'Delete brand group?',confirmText:'Delete Group'}))return;await json(`/groups/${target}`,{method:'DELETE'});editId=null;$('ps-manager').hidden=true;await loadGroups();await loadHistory(1);message('Brand group deleted. Saved history retained.');});
-  $('ps-group').onchange=()=>{renderGroup();};
+  $('ps-group-form').onsubmit=e=>{e.preventDefault();work(async()=>{const target=editId;const body={name:$('ps-name').value,children:$('ps-children').value.split(/[\n,]+/).map(x=>x.trim()).filter(Boolean)};const g=await json(target!==null?`/groups/${target}`:'/groups',{method:target!==null?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});await loadGroups(g.id);setCurrent(null);manager(g);message(target===null?'New brand group created. Existing groups retained.':'Selected brand group updated.');});};
+  $('ps-group-delete').onclick=()=>work(async()=>{const target=editId;if(target===null)return;if(!await confirm('Delete this brand group? Saved picklist history and Excel downloads will remain available.',{variant:'danger',title:'Delete brand group?',confirmText:'Delete Group'}))return;await json(`/groups/${target}`,{method:'DELETE'});editId=null;$('ps-manager').hidden=true;await loadGroups();setCurrent(null);await loadHistory(1);message('Brand group deleted. Saved history retained.');});
+  $('ps-group').onchange=()=>{renderGroup();setCurrent(null);message('Main Brand selected. Process the uploaded file for this group.');};
   file.onchange=()=>{$('packing-filename').textContent=[...file.files].map(f=>f.name).join(', ')||'.xlsx, .xls, .csv · SKU and Qty';const wrap=$('ps-file-markets');wrap.hidden=!file.files.length;wrap.innerHTML='<strong>Marketplace detection · optional file fallback</strong>'+[...file.files].map((f,i)=>`<label class="ps-file-market"><span>${esc(f.name)}</span><input class="input" data-market-index="${i}" maxlength="80" placeholder="Auto detect · or enter marketplace" aria-label="Marketplace for ${esc(f.name)}"></label>`).join('');buttons();};$('packing-date').onchange=buttons;
-  function pager(prefix, data, prev, next, info){$(prefix).hidden=data.pages<=1;$(prev).disabled=data.page<=1;$(next).disabled=data.page>=data.pages;const first=data.count?(data.page-1)*6+1:0,last=Math.min(data.page*6,data.count);$(info).textContent=`${number(first)}–${number(last)} of ${number(data.count)} · Page ${data.page}/${data.pages}`;}
+  function pager(prefix, data, prev, next, info){$(prefix).hidden=(prefix==='ps-party-pagination' ? !data.count : data.pages<=1);$(prev).disabled=data.page<=1;$(next).disabled=data.page>=data.pages;const first=data.count?(data.page-1)*6+1:0,last=Math.min(data.page*6,data.count);$(info).textContent=`${number(first)}–${number(last)} of ${number(data.count)} · Page ${data.page}/${data.pages}`;}
+  function renderPartyTotals(p=1){
+    const entries=Object.entries(current?.party_totals||{}), pages=Math.max(1,Math.ceil(entries.length/6));
+    partyTotalsPage=Math.max(1,Math.min(p,pages));
+    $('packing-party-list').innerHTML=entries.slice((partyTotalsPage-1)*6,partyTotalsPage*6).map(([party,n])=>`<div class="ps-party-card"><span><i class="fa-solid fa-boxes-stacked"></i> ${esc(party)}</span><strong>${number(n)} pcs</strong></div>`).join('')||(current?'<p class="hint">No matched packing parties. Check Review.</p>':'<p class="hint">Matched party totals will appear here.</p>');
+    pager('ps-party-totals-pagination',{page:partyTotalsPage,pages,count:entries.length},'ps-party-totals-prev','ps-party-totals-next','ps-party-totals-page');
+  }
+  $('ps-party-totals-prev').onclick=()=>renderPartyTotals(partyTotalsPage-1);
+  $('ps-party-totals-next').onclick=()=>renderPartyTotals(partyTotalsPage+1);
   function setCurrent(s){current=s;
     for(const [id,k] of [['packing-source-count','source_rows'],['packing-total','total_qty'],['packing-matched','matched_qty'],['packing-review-count','review_count']])$(id).textContent=s?number(s[k]):'—';
     $('ps-reconcile').hidden=!s;$('ps-reconcile').classList.toggle('ps-warning',!!s?.review_count);
     if(s)$('ps-reconcile').textContent=`${s.group.name} · ${s.date} · ${number(s.matched_qty)} matched + ${number(s.review_qty)} review = ${number(s.total_qty)} pcs · ${number(s.skipped_rows)} total/blank rows ignored`;
-    $('packing-party-list').innerHTML=s?Object.entries(s.party_totals||{}).map(([p,n])=>`<div class="ps-party-card"><span><i class="fa-solid fa-boxes-stacked"></i> ${esc(p)}</span><strong>${number(n)} pcs</strong></div>`).join('')||'<p class="hint">No matched packing parties. Check Review.</p>':'<p class="hint">Matched party totals will appear here.</p>';
+    renderPartyTotals(1);
     $('ps-merged-info').textContent=s?`${number(s.merged_rows)} merged SKU / size rows`:'';
-    options($('ps-match-brand'),(s?.group.children||[]).map(x=>[canonical(x),canonical(x)]),'All source brands','');$('ps-match-status').value='all';$('ps-match-q').value='';$('ps-party-q').value='';buttons();
+    options($('ps-match-brand'),groupBrands(s?.group).map(x=>[canonical(x),canonical(x)]),'All source brands','');$('ps-match-status').value='all';$('ps-match-q').value='';$('ps-party-q').value='';buttons();
     if(!s){detailToken++;partyToken++;$('packing-sample').innerHTML='<tr><td colspan="7" class="empty">Process a file to review SKU matching.</td></tr>';$('ps-party-items').innerHTML='<tr><td colspan="5" class="empty">No processed items yet.</td></tr>';$('packing-pagination').hidden=true;$('ps-party-pagination').hidden=true;}
   }
   async function loadAudit(p=1){if(!current)return;const token=++detailToken;const qs=new URLSearchParams({view:'audit',status:$('ps-match-status').value,brand:$('ps-match-brand').value,q:$('ps-match-q').value,page:p,page_size:6});const d=await json(`/history/${current.id}?${qs}`);if(token!==detailToken)return;auditPage=d.page;$('packing-sample').innerHTML=d.rows.map(x=>`<tr><td><span class="ps-chip">${esc(x.brand)}</span><small class="ps-issue">${esc(x.marketplace||'Unspecified')}</small></td><td>${esc(x.source_sku)}<small class="ps-issue">${esc(x.file)} · row ${number(x.row)}</small></td><td>${esc(x.product||'—')}</td><td>${esc(x.pick_sku||'—')}</td><td>${esc(x.party||'—')}</td><td>${number(x.qty)}</td><td><span class="ps-state ${x.issue?'ps-review':''}">${x.issue?'Needs review':'Matched'}</span>${x.issue?`<small class="ps-issue">${esc(x.issue)}</small>`:''}</td></tr>`).join('')||'<tr><td colspan="7" class="empty">No rows match this filter.</td></tr>';pager('packing-pagination',d,'packing-prev','packing-next','packing-page-info');}
