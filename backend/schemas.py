@@ -256,6 +256,8 @@ class BulkProductImportResult(BaseModel):
     duplicate_rows_merged: int = 0
     free_size_rows: int = 0
     errors_truncated: bool = False
+    duplicate_warnings: int = 0
+    photo_assignments: List[dict] = Field(default_factory=list)
 
 
 class TrashProductOut(BaseModel):

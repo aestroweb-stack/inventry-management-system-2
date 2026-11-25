@@ -127,13 +127,13 @@ async function apiDelete(url) { const r = await fetch(url, { method: "DELETE" })
 async function apiPost(url, body) {
   const r = await fetch(url, { method: "POST", headers: body ? { "Content-Type": "application/json" } : undefined, body: body ? JSON.stringify(body) : undefined });
   const d = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(typeof d.detail === "string" ? d.detail : `HTTP ${r.status}`);
+  if (!r.ok) { const error = new Error(typeof d.detail === "string" ? d.detail : `HTTP ${r.status}`); error.status = r.status; throw error; }
   return d;
 }
 async function apiPatch(url, body) {
   const r = await fetch(url, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   const d = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(typeof d.detail === "string" ? d.detail : `HTTP ${r.status}`);
+  if (!r.ok) { const error = new Error(typeof d.detail === "string" ? d.detail : `HTTP ${r.status}`); error.status = r.status; throw error; }
   return d;
 }
 
@@ -490,7 +490,6 @@ function renderDetail(product, container, opts = {}) {
         <div class="detail-actions">
           <button class="btn-secondary" id="detail-save" type="button"><i class="fa-solid fa-floppy-disk"></i> Save Changes</button>
           <div class="product-label-actions" aria-label="Product labels">
-            <a class="btn-ghost product-label-link" href="${API}/products/${encodeURIComponent(product.sku)}/barcode" target="_blank" rel="noopener" title="Open product barcode label"><i class="fa-solid fa-barcode"></i><span>Barcode</span></a>
             <a class="btn-ghost product-label-link" href="${API}/products/${encodeURIComponent(product.sku)}/qr" target="_blank" rel="noopener" title="Open product QR label"><i class="fa-solid fa-qrcode"></i><span>QR code</span></a>
           </div>
           <span class="sku-tag" style="align-self:center;">${esc(product.sku)}</span>
@@ -626,7 +625,7 @@ function renderDetail(product, container, opts = {}) {
           category: container.querySelector("#detail-category").value,
         }),
       });
-      if (!res.ok) throw new Error((await res.json()).detail);
+      if (!res.ok) { const err = new Error((await res.json()).detail); err.status = res.status; throw err; }
       msg.textContent = "Saved"; msg.className = "msg success";
       showToast("Product + canonical SKU updated");
       const saved = await res.json();
@@ -635,7 +634,7 @@ function renderDetail(product, container, opts = {}) {
         window.__keepProductSearch = true;
         loadLatestProducts();
       }
-    } catch (err) { msg.textContent = "Could not save"; msg.className = "msg error"; }
+    } catch (err) { msg.textContent = err.message || "Could not save"; msg.className = "msg error"; if (err.status === 409) await window.MYRAAUI.alert(err.message,{title:"Duplicate product or SKU",variant:"warning"}); }
   });
 
   const delBtn = container.querySelector("#detail-delete");
@@ -716,12 +715,14 @@ function selectAddMode(mode) {
 }
 document.querySelectorAll(".add-mode-tab").forEach((button) => button.addEventListener("click", () => selectAddMode(button.dataset.addMode)));
 $("open-add-product").addEventListener("click", () => {
+  if (bulkProductBusy) { $("add-product-modal").hidden = false; selectAddMode("bulk"); return; }
   $("add-product-form").reset();
   resetAddForm();
   selectAddMode("single");
   $("add-product-msg").textContent = "";
   $("add-product-msg").className = "msg";
   $("bulk-product-file").value = "";
+  $("bulk-product-photos").value = "";
   bulkProductFile = null;
   $("bulk-product-file-title").textContent = "Choose your filled Excel file";
   $("bulk-product-file-meta").textContent = ".xlsx, .xls or .csv · up to 20,000 rows";
@@ -976,15 +977,20 @@ $("add-product-form").addEventListener("submit", async (e) => {
     switchView("products");
     $("product-search").value = "";
     await Promise.allSettled([loadLatestProducts(), loadSummary(), loadAlerts(), loadReorderList()]);
-  } catch (err) { msg.textContent = err.message; msg.className = "msg error"; showToast(err.message || "Could not add product", "error", 2200); }
+  } catch (err) { msg.textContent = err.message; msg.className = "msg error";
+    if (err.status === 409 || /already exists|duplicate/i.test(err.message)) await window.MYRAAUI.alert(err.message, {title:"Duplicate product or SKU",variant:"warning"});
+    else showToast(err.message || "Could not add product", "error", 2200);
+  }
   finally { submitButton.disabled = false; submitButton.textContent = submitButton.dataset.originalText || "Save Product"; }
 });
 
 // ---------------- Bulk product import ----------------
 let bulkProductFile = null;
+let bulkProductBusy = false;
 const bulkProductInput = $("bulk-product-file");
 const bulkProductDropzone = $("bulk-product-dropzone");
 function showBulkProductFile(file) {
+  if (bulkProductBusy) return;
   bulkProductFile = file || null;
   const submit = $("bulk-product-submit");
   if (!file) {
@@ -1016,30 +1022,59 @@ function renderBulkProductResult(data) {
   const title = changed
     ? (hasErrors ? "Import complete with a few rows to fix" : "Your products are ready!")
     : "No products were added";
-  const summary = `${data.products_created} new product${data.products_created === 1 ? "" : "s"}; ${data.products_merged || 0} old size-product${data.products_merged === 1 ? "" : "s"} grouped into designs. ${data.variants_created} sizes added, ${data.variants_merged || 0} existing sizes kept. ${data.duplicate_rows_merged || 0} duplicate listing rows matched; ${data.free_size_rows || 0} missing-size rows imported as FREE SIZE. ${data.rows_skipped} row${data.rows_skipped === 1 ? "" : "s"} skipped.`;
+  const summary = `${data.products_created} new designs; ${data.variants_created} sizes added. ${data.duplicate_rows_merged || 0} repeated listing rows consolidated without adding stock twice; ${data.free_size_rows || 0} blank-size rows interpreted as FREE SIZE. ${data.rows_skipped} rows skipped. ${data.duplicate_warnings || 0} design groups flagged for duplicate or SKU conflicts.`;
   const errors = data.errors.length ? `<div class="bulk-row-errors"><strong>Rows to review</strong>${data.errors.map((item) => `<div>Row ${item.row}${item.sku ? ` · ${esc(item.sku)}` : ""}: ${esc(item.message)}</div>`).join("")}${data.errors_truncated ? "<div>More row errors were omitted. Correct these and upload again.</div>" : ""}</div>` : "";
   box.innerHTML = `<div class="bulk-import-result ${hasErrors ? "has-errors" : ""}"><div class="bulk-result-mark"><i class="fa-solid ${changed ? "fa-check" : "fa-triangle-exclamation"}"></i></div><div class="bulk-result-copy"><strong>${title}</strong><p>${summary}</p><div class="bulk-result-numbers"><span class="bulk-result-pill">${data.products_created} new designs</span><span class="bulk-result-pill">${data.variants_created + (data.variants_merged || 0)} sizes grouped</span><span class="bulk-result-pill">${data.blank_rows} blank rows</span></div></div></div>${errors}`;
   box.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
 $("bulk-product-submit").addEventListener("click", async () => {
-  if (!bulkProductFile) return;
+  if (!bulkProductFile || bulkProductBusy) return;
   const button = $("bulk-product-submit"), box = $("bulk-product-result");
   if (bulkProductFile.size > 12 * 1024 * 1024) {
     box.innerHTML = `<div class="msg error">This file is over 12 MB. Split the workbook and upload it in smaller parts.</div>`;
     return;
   }
+  bulkProductBusy = true;
+  const workbookFile = bulkProductFile;
+  const selectedPhotos = Array.from($("bulk-product-photos").files || []);
+  bulkProductInput.disabled = true; $("bulk-product-photos").disabled = true;
   button.disabled = true;
   const original = button.innerHTML;
   button.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Importing…`;
   bulkProductDropzone.classList.add("is-loading");
   box.innerHTML = `<p class="hint">Checking sizes and saving products safely…</p>`;
   try {
-    const body = new FormData(); body.append("file", bulkProductFile);
+    const body = new FormData(); body.append("file", workbookFile);
     const response = await fetch(`${API}/products/bulk`, { method: "POST", body });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.detail || `Import failed (HTTP ${response.status})`);
     renderBulkProductResult(data);
+    const photoWarnings = [];
+    const photoByName = new Map();
+    for (const file of selectedPhotos) {
+      const key = file.name.toLowerCase();
+      if (!photoByName.has(key)) photoByName.set(key, file);
+      else photoByName.set(key, null);
+    }
+    for (const assignment of data.photo_assignments || []) {
+      const files = assignment.files.map(name => photoByName.get(name.toLowerCase()));
+      if (files.some(file => !file)) { photoWarnings.push(`${assignment.sku}: missing or duplicate photo filename; no photos uploaded.`); continue; }
+      const base = `${API}/products/${encodeURIComponent(assignment.sku)}`;
+      try {
+        const primary = new FormData(); primary.append("file",files[0]);
+        const result = await fetch(`${base}/image`,{method:"POST",body:primary});
+        if (!result.ok) throw new Error((await result.json().catch(()=>({}))).detail || "Main photo failed");
+        if (files.length > 1) {
+          const extra = new FormData(); files.slice(1).forEach(file=>extra.append("files",file));
+          const response = await fetch(`${base}/images`,{method:"POST",body:extra});
+          if (!response.ok) throw new Error((await response.json().catch(()=>({}))).detail || "Extra photos failed");
+        }
+      } catch (e) { photoWarnings.push(`${assignment.sku}: ${e.message || 'Photo upload failed'}`); }
+    }
+    if (photoWarnings.length) box.insertAdjacentHTML("beforeend", `<div class="bulk-row-errors"><strong>Photo upload review (products remain saved)</strong>${photoWarnings.map(w=>`<div>${esc(w)}</div>`).join("")}</div>`);
+    if (data.duplicate_warnings) await window.MYRAAUI.alert(`${data.duplicate_warnings} design group(s) contain duplicate products, sizes or conflicting SKU mappings. Existing records were protected. See Rows to review for details.`,{title:"Duplicate catalog entries",variant:"warning"});
+    $("bulk-product-photos").value = "";
     bulkProductFile = null;
     bulkProductInput.value = "";
     $("bulk-product-file-title").textContent = "Import finished — choose another file";
@@ -1056,6 +1091,7 @@ $("bulk-product-submit").addEventListener("click", async () => {
     button.innerHTML = original;
     button.disabled = !bulkProductFile;
     bulkProductDropzone.classList.remove("is-loading");
+    bulkProductBusy = false; bulkProductInput.disabled = false; $("bulk-product-photos").disabled = false;
   }
 });
 
@@ -1535,7 +1571,7 @@ $("bulk-file-input").addEventListener("change", async () => {
   try {
     const res = await fetch(`${API}/inventory/bulk-set`, { method: "POST", body: fd });
     const data = await res.json();
-    if (!res.ok) { box.innerHTML = `<div class="msg error">${esc(data.detail)}</div>`; return; }
+    if (!res.ok) { box.innerHTML = `<div class="msg error">${esc(data.detail)}</div>`; if (/duplicate design|already belongs/i.test(data.detail || "")) await window.MYRAAUI.alert(data.detail,{title:"Duplicate product or SKU",variant:"warning"}); return; }
     box.innerHTML = `
       <div class="stat-row">
         <div class="stat-card"><div class="n">${data.updated_count}</div><div class="l">Sizes updated</div></div>
@@ -2115,14 +2151,10 @@ function selectLabelProduct(product) {
   $("label-results").innerHTML = "";
   $("label-selected").hidden = false;
   $("label-selected-name").textContent = `${product.sku} — ${product.name}`;
-  $("label-size-summary").textContent = `${product.variants.length} size${product.variants.length === 1 ? "" : "s"} · either code opens the complete design`;
+  $("label-size-summary").textContent = `${product.variants.length} size${product.variants.length === 1 ? "" : "s"} · QR code opens the complete design`;
   const base = `${API}/products/${encodeURIComponent(product.sku)}`;
-  $("product-barcode-download").href = `${base}/barcode`;
-  $("product-barcode-download").download = `${product.sku}_barcode.png`;
   $("product-qr-download").href = `${base}/qr`;
   $("product-qr-download").download = `${product.sku}_qr.png`;
-  $("product-combo-download").href = `${base}/label`;
-  $("product-combo-download").download = `${product.sku}_barcode_qr.png`;
 }
 
 // ================================================================ //

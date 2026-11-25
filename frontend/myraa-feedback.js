@@ -127,7 +127,8 @@
     accept.type = 'button';
     accept.className = 'myraa-confirm-accept';
     accept.textContent = options.confirmText || 'Continue';
-    buttons.append(cancel, accept);
+    if (options.dismissOnly) buttons.append(accept);
+    else buttons.append(cancel, accept);
     dialog.append(top, body, buttons);
     layer.append(dialog);
     document.body.append(layer);
@@ -147,6 +148,7 @@
     function onKeydown(event) {
       if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); finish(false); return; }
       if (event.key !== 'Tab') return;
+      if (options.dismissOnly) { event.preventDefault(); accept.focus(); return; }
       const controls = [cancel, accept];
       const index = controls.indexOf(document.activeElement);
       if (event.shiftKey && index <= 0) { event.preventDefault(); accept.focus(); }
@@ -156,7 +158,7 @@
     layer.addEventListener('mousedown', (event) => { if (event.target === layer) finish(false); });
     cancel.addEventListener('click', () => finish(false));
     accept.addEventListener('click', () => finish(true));
-    cancel.focus({ preventScroll:true }); // Never put focus on a destructive action first.
+    (options.dismissOnly ? accept : cancel).focus({ preventScroll:true }); // Never put focus on a destructive action first.
   }
   window.MYRAAUI = Object.freeze({
     notify,
@@ -164,6 +166,7 @@
     error: (message, options={}) => notify(message, {...options,type:'error'}),
     warning: (message, options={}) => notify(message, {...options,type:'warning'}),
     info: (message, options={}) => notify(message, {...options,type:'info'}),
-    confirm
+    confirm,
+    alert: (message, options={}) => confirm(message, {...options, dismissOnly:true, confirmText: options.confirmText || "OK"})
   });
 })();

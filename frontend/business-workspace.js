@@ -16,7 +16,7 @@
     if (!el) return;
     el.textContent = message;
     el.className = error ? 'business-message is-error' : 'business-message';
-    if (error && message) window.MYRAAUI.error(message);
+    if (error && message) { if (/duplicate design|already belongs/i.test(message)) void window.MYRAAUI.alert(message,{title:"Duplicate product or SKU",variant:"warning"}); else window.MYRAAUI.error(message); }
   };
 
   // Both scopes are explicit; whole-product SKU needs Size in the order sheet.

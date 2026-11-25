@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session, joinedload
 from models import Product, Variant, Alert, InventoryTransaction, TransactionType
 from services.table_reader import read_table, to_int, clean_code
 from services import inventory_service, alert_service
+from services.catalog_identity import duplicate_design, duplicate_message, canonical_conflict, lock_catalog
 
 SIZE_ORDER = {"XS": 0, "S": 1, "M": 2, "L": 3, "XL": 4, "XXL": 5, "3XL": 6, "4XL": 7, "5XL": 8}
 
@@ -123,6 +124,7 @@ def bulk_set_stock(db: Session, file_bytes: bytes, filename: str = "", created_b
         )
 
     records = df.to_dict("records")
+    lock_catalog(db)
     now = datetime.now(timezone.utc)
     targets: dict[int, tuple[Variant, int]] = {}
     created_products = 0
@@ -185,6 +187,10 @@ def bulk_set_stock(db: Session, file_bytes: bytes, filename: str = "", created_b
             if not product:
                 product_name = str(rec.get(product_col) or sku).strip()
                 category = str(rec.get(category_col) or "").strip() or None
+                duplicate=duplicate_design(db,product_name)
+                if duplicate or canonical_conflict(db,sku):
+                    db.rollback()
+                    raise ValueError(duplicate_message(duplicate) if duplicate else "Master SKU already belongs to another product or linked SKU.")
                 product = Product(sku=sku, name=product_name, category=category)
                 db.add(product)
                 db.flush()

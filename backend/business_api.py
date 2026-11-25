@@ -28,6 +28,7 @@ import models
 from business_models import ProductCost, VariantCost, MarketplaceSkuAlias, ProductMarketplaceAlias, PurchaseChallan, PurchaseChallanLine, PurchaseChallanAttachment
 from services import excel_service, inventory_service, alert_service
 from services.table_reader import read_table, clean_code, to_int
+from services.catalog_identity import duplicate_design, duplicate_message, canonical_conflict, lock_catalog
 
 router = APIRouter(prefix="/api", tags=["Finance and purchase invoices"])
 MAX_EXCEL_SIZE = 12 * 1024 * 1024
@@ -762,6 +763,7 @@ def update_receipt(batch_id: int, payload: ReceiptUpdate, db: Session = Depends(
 
 @router.post("/purchase-challans/{batch_id}/push")
 def push_challan_to_inventory(batch_id: int, db: Session = Depends(get_db)):
+    lock_catalog(db)
     db.execute(update(PurchaseChallan).where(PurchaseChallan.id == batch_id).values(status=PurchaseChallan.status))
     batch = db.query(PurchaseChallan).filter_by(id=batch_id).populate_existing().with_for_update().first()
     if not batch:
@@ -779,6 +781,9 @@ def push_challan_to_inventory(batch_id: int, db: Session = Depends(get_db)):
             if product and product.is_deleted:
                 raise HTTPException(409, f"{item.sku} is in Trash: restore manually first")
             if not product:
+                duplicate=duplicate_design(db,item.name)
+                if duplicate: raise HTTPException(409,duplicate_message(duplicate))
+                if canonical_conflict(db,item.sku): raise HTTPException(409, "Master SKU already belongs to another product or linked SKU.")
                 product = models.Product(sku=item.sku, name=item.name, category=item.category or None)
                 db.add(product)
                 db.flush()

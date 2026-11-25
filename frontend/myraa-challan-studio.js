@@ -8,7 +8,7 @@ const money=n=>'₹'+Number(n||0).toLocaleString('en-IN',{maximumFractionDigits:
 const row=()=>({name:'',sku:'',size:'',qty_ordered:'',qty_received:0,unit_cost:null});
 const dateToday=()=>new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
 const state={id:null,status:'NEW',mode:'edit',invoice_no:'',rows:[],files:[],attachments:[],busy:false};
-const msg=(text,bad=false)=>{const el=$('cs-message');el.textContent=text||'';el.classList.toggle('is-error',bad);if(bad&&text)window.MYRAAUI.error(text);};
+const msg=(text,bad=false)=>{const el=$('cs-message');el.textContent=text||'';el.classList.toggle('is-error',bad);if(bad&&text){if(/duplicate design|already belongs/i.test(text))void window.MYRAAUI.alert(text,{title:"Duplicate product or SKU",variant:"warning"});else window.MYRAAUI.error(text);}};
 const api=async(url,options={})=>{
  const response=await fetch('/api/purchase-challans'+url,{credentials:'same-origin',...options});
  const data=await response.json().catch(()=>({}));

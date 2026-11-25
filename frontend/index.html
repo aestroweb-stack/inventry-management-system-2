@@ -21,7 +21,7 @@
 <link rel="stylesheet" href="myraa-accessible-v2.css?v=nov24-r4">
 <link rel="stylesheet" href="myraa-premium-nav.css?v=nov24-r4">
 <link rel="stylesheet" href="myraa-feedback.css?v=nov24-r4">
-<link rel="stylesheet" href="myraa-fixes.css?v=nov25-r10">
+<link rel="stylesheet" href="myraa-fixes.css?v=nov25-r12">
 <link rel="stylesheet" href="myraa-responsive-r6.css?v=nov25-r6">
 </head>
 <body>
@@ -417,7 +417,7 @@
 
     <!-- ================= PRINT LABELS ================= -->
     <section id="view-labels" class="view">
-      <header class="view-head"><div><h1>Print Labels</h1><p class="sub">Download one compact label per design with both a QR code and barcode. Either scan opens every size together.</p></div></header>
+      <header class="view-head"><div><h1>Print Labels</h1><p class="sub">Download one QR label per design. Scan it to open every size together.</p></div></header>
       <div class="panel" style="max-width:520px;">
         <label class="field">Find a design<input id="label-search" type="text" placeholder="Type a SKU or product name…" class="input"></label>
         <div id="label-results" class="stack-list" style="margin-top:8px;"></div>
@@ -426,9 +426,7 @@
           <div id="label-selected-name" class="bold"></div>
           <p id="label-size-summary" class="hint"></p>
           <div class="product-label-actions print-label-options" aria-label="Download product labels">
-            <a id="product-barcode-download" href="#" download class="btn-secondary product-label-link"><i class="fa-solid fa-barcode"></i><span>Barcode</span></a>
-            <a id="product-qr-download" href="#" download class="btn-secondary product-label-link"><i class="fa-solid fa-qrcode"></i><span>QR code</span></a>
-            <a id="product-combo-download" href="#" download class="btn-primary product-label-link"><i class="fa-solid fa-tags"></i><span>Both</span></a>
+            <a id="product-qr-download" href="#" download class="btn-primary product-label-link"><i class="fa-solid fa-qrcode"></i><span>Download QR code</span></a>
           </div>
         </div>
       </div>
@@ -495,7 +493,7 @@
     <section id="bulk-product-panel" class="bulk-product-panel" hidden>
       <div class="bulk-product-intro">
         <div class="bulk-product-icon"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
-        <div><h3>Add your full catalog at once</h3><p>One row per size. Repeated design SKUs group automatically; a final size suffix like <b>-XL</b> is detected and grouped too. Add photos later from Edit.</p></div>
+        <div><h3>Add your full catalog at once</h3><p>One row per size. Import Master SKU, category, stock, purchase costs, linked marketplace SKUs and optional photos together. Download the new format for instructions.</p></div>
       </div>
       <a id="bulk-product-template" class="template-download" href="/api/products/bulk-template"><span class="template-icon"><i class="fa-solid fa-file-arrow-down"></i></span><span><strong>Download Excel format</strong><small>Includes column guide and import rules</small></span><i class="fa-solid fa-arrow-down download-arrow"></i></a>
       <label id="bulk-product-dropzone" class="bulk-product-dropzone">
@@ -504,7 +502,8 @@
         <strong id="bulk-product-file-title">Choose your filled Excel file</strong>
         <small id="bulk-product-file-meta">.xlsx, .xls or .csv · up to 20,000 rows</small>
       </label>
-      <div class="bulk-product-actions"><span class="hint">Products with existing SKUs are skipped safely.</span><button type="button" id="bulk-product-submit" class="btn-primary" disabled><i class="fa-solid fa-sparkles"></i> Import products</button></div>
+      <div class="bulk-photo-field"><label class="field" for="bulk-product-photos">Product photos (optional)</label><input class="input" type="file" multiple id="bulk-product-photos" accept="image/jpeg,image/png,image/webp"><small class="hint">Select local files named in the Photo Filenames column. Only newly created products receive photos.</small></div>
+      <div class="bulk-product-actions"><span class="hint">Existing sizes and stock are protected. Duplicate designs are reported.</span><button type="button" id="bulk-product-submit" class="btn-primary" disabled><i class="fa-solid fa-sparkles"></i> Import products</button></div>
       <div id="bulk-product-result" aria-live="polite"></div>
     </section>
   </div>
@@ -531,14 +530,14 @@
 <footer class="myraa-owner-footer">© 2026 <strong>Hacker Room</strong>. All rights reserved. <a href="mailto:aestroweb@gmail.com">aestroweb@gmail.com</a> · <a href="tel:+918630404031">+91 8630404031</a></footer>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
-<script src="myraa-feedback.js?v=nov24-r4"></script>
+<script src="myraa-feedback.js?v=nov25-r12"></script>
 <script src="myraa-auth-gate.js?v=nov24-r4"></script>
-<script src="app.js?v=nov25-r10"></script>
+<script src="app.js?v=nov25-r12"></script>
 <script src="myraa-signature-v3.js?v=nov24-r4"></script>
 <script src="packing-picklist.js?v=nov25-r11"></script>
-<script src="business-workspace.js?v=nov25-r11"></script>
+<script src="business-workspace.js?v=nov25-r12"></script>
 <script src="product-challan-pages.js?v=nov24-r4"></script>
-<script src="myraa-challan-studio.js?v=nov24-r4"></script>
+<script src="myraa-challan-studio.js?v=nov25-r12"></script>
 <script src="seller-sounds.js?v=nov24-r4"></script>
 <script src="clerk-auth.js?v=nov24-r4"></script>
 <script src="myraa-ui-refresh.js?v=nov24-r4"></script>

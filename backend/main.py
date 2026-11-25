@@ -35,6 +35,7 @@ from services import (
     visual_match_service, visual_search_service, recovery_service,
 )
 from services import app_auth
+from services.catalog_identity import design_key, lock_catalog, duplicate_design, duplicate_message, canonical_conflict
 from services import packing_picklist_service
 from packing_sync_api import router as packing_sync_router  # register persistent picklist tables before create_all
 
@@ -123,7 +124,7 @@ async def authenticated_seller_workspace(request: Request, call_next):
             request.scope["headers"] = [(k, v) for k, v in request.scope["headers"] if k not in (b"if-none-match", b"if-modified-since")]
             response = await call_next(request)
             response.headers["Cache-Control"] = "no-store, max-age=0"
-            response.headers["X-MYRAA-Release"] = "nov25-r10"
+            response.headers["X-MYRAA-Release"] = "nov25-r12"
             return response
     # The public StaticFiles mount must never serve a legacy/global product
     # photo from a nested path that bypasses the seller-specific image route.
@@ -224,7 +225,7 @@ def auth_logout_deprecated():
 
 @app.get("/api/health")
 def health(response: Response):
-    response.headers["X-MYRAA-Release"] = "nov25-r10"
+    response.headers["X-MYRAA-Release"] = "nov25-r12"
     response.headers["Cache-Control"] = "no-store"
     return {"status": "ok"}
 
@@ -602,7 +603,7 @@ def bulk_product_template():
     content = bulk_product_service.build_bulk_product_template()
     return StreamingResponse(
         BytesIO(content), media_type=XLSX_MEDIA,
-        headers={"Content-Disposition": "attachment; filename=bulk_product_template.xlsx"},
+        headers={"Content-Disposition": "attachment; filename=bulk_product_template.xlsx", "Cache-Control":"private, no-store"},
     )
 
 
@@ -626,14 +627,27 @@ def get_product(sku: str, db: Session = Depends(get_db)):
 @app.post("/api/products", response_model=schemas.ProductOut)
 def create_product(payload: schemas.ProductCreate, db: Session = Depends(get_db)):
     sku = payload.sku.strip().upper()
+    lock_catalog(db)
+    if not sku or len(sku) > 64 or not design_key(payload.name) or len(payload.name) > 300:
+        raise HTTPException(422, "Enter a valid Master SKU and product name.")
     existing = db.query(models.Product).filter(models.Product.sku == sku).first()
     if existing and not existing.is_deleted:
         raise HTTPException(400, f"SKU '{sku}' already exists.")
     if existing and existing.is_deleted:
         raise HTTPException(409, f"SKU '{sku}' exists in Trash. Restore it instead of creating a new one.")
 
+    duplicate = duplicate_design(db, payload.name)
+    if duplicate:
+        raise HTTPException(409, duplicate_message(duplicate))
+    if canonical_conflict(db, sku):
+        raise HTTPException(409, f"Master SKU '{sku}' already identifies a linked SKU or size.")
     sizes_seen = set()
     for v in payload.variants:
+        code = _make_variant_code(sku, v.size)
+        if not v.size.strip() or len(v.size.strip()) > 20 or len(code) > 80:
+            raise HTTPException(422, "Invalid size or size SKU length.")
+        if canonical_conflict(db, code):
+            raise HTTPException(409, f"Size SKU '{code}' already exists as another SKU or mapping.")
         if v.size.strip().upper() in sizes_seen:
             raise HTTPException(400, f"Duplicate size '{v.size}' in request.")
         sizes_seen.add(v.size.strip().upper())
@@ -684,8 +698,16 @@ def create_product(payload: schemas.ProductCreate, db: Session = Depends(get_db)
 
 @app.patch("/api/products/{sku}", response_model=schemas.ProductOut)
 def update_product(sku: str, payload: schemas.ProductUpdate, db: Session = Depends(get_db)):
+    lock_catalog(db)
     product = _get_product_by_sku(db, sku)
     data = payload.model_dump(exclude_unset=True)
+    if "name" in data:
+        if not design_key(data["name"]) or len(data["name"]) > 300:
+            raise HTTPException(422, "Enter a valid product name.")
+        if design_key(data["name"]) != design_key(product.name):
+            duplicate = duplicate_design(db, data["name"], exclude_id=product.id)
+            if duplicate:
+                raise HTTPException(409, duplicate_message(duplicate))
     cost = data.pop("unit_cost", None)
     if cost is not None:
         upsert_product_cost(db, product.id, cost)
@@ -703,10 +725,15 @@ def update_product(sku: str, payload: schemas.ProductUpdate, db: Session = Depen
             ).first()
             if conflict:
                 raise HTTPException(409, f"SKU '{new_sku}' already exists.")
+            if canonical_conflict(db, new_sku, product_id=product.id):
+                raise HTTPException(409, f"SKU '{new_sku}' already identifies a linked SKU or size.")
             for variant in product.variants:
                 if variant.is_deleted:
                     continue
-                variant.variant_code = _make_variant_code(new_sku, variant.size)
+                new_code = _make_variant_code(new_sku, variant.size)
+                if len(new_code) > 80 or canonical_conflict(db, new_code, product_id=product.id, variant_id=variant.id):
+                    raise HTTPException(409, f"Size SKU '{new_code}' conflicts with an existing SKU or mapping.")
+                variant.variant_code = new_code
             product.sku = new_sku
 
     for field, value in data.items():
