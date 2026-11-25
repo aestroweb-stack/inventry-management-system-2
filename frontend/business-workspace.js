@@ -100,6 +100,8 @@
     const endpoint = `/api/products/${encodeURIComponent(product.sku)}`;
     const refresh = async () => {
       const data = await json(endpoint);
+      // A late cost/alias response must not replace a different open editor.
+      if (!container.contains(block)) return;
       if (typeof window.renderDetail === 'function') window.renderDetail(data,container,{showDelete:Boolean(container.querySelector('#detail-delete')),preserveDraft:true});
       else if (typeof window.openProductDetail === 'function') window.openProductDetail(data.sku);
     };

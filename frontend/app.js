@@ -233,21 +233,56 @@ $("topbar-alerts").addEventListener("click", () => switchView("alerts"));
 document.querySelectorAll(".rail-link[data-view]").forEach((btn) => btn.addEventListener("click", () => switchView(btn.dataset.view)));
 
 const APP_VIEW_NAMES = new Set([...document.querySelectorAll(".view")].map((view) => view.id.replace(/^view-/, "")));
-function viewFromLocation() {
-  let requested = "";
-  try { requested = decodeURIComponent(window.location.hash.replace(/^#\/?/, "").split(/[?&]/, 1)[0] || ""); } catch { /* Invalid hash returns to dashboard. */ }
-  return APP_VIEW_NAMES.has(requested) ? requested : "dashboard";
+// Route identity must include the product, not just the visible section. Only
+// the SKU is stored in the URL; drafts and private product data are not stored.
+let activeRoute = null;
+let navigationVersion = 0;
+function routeFromLocation() {
+  const raw = window.location.hash.replace(/^#\/?/, "");
+  const separator = raw.indexOf("?");
+  const path = separator < 0 ? raw : raw.slice(0, separator);
+  let name = "";
+  try { name = decodeURIComponent(path); } catch { /* invalid hash */ }
+  if (!APP_VIEW_NAMES.has(name)) return { name: "dashboard", sku: "" };
+  if (name !== "detail") return { name, sku: "" };
+  const sku = new URLSearchParams(separator < 0 ? "" : raw.slice(separator + 1)).get("sku")?.trim() || "";
+  // Old #detail links had no product identity; never guess which product.
+  return sku ? { name, sku } : { name: "products", sku: "" };
+}
+function routeHash(route) {
+  return `#${encodeURIComponent(route.name)}${route.name === "detail" ? `?sku=${encodeURIComponent(route.sku)}` : ""}`;
+}
+function sameRoute(a, b) { return a?.name === b?.name && a?.sku === b?.sku; }
+function writeRoute(route, replace = false) {
+  const hash = routeHash(route);
+  if (window.location.hash !== hash) window.history[replace ? "replaceState" : "pushState"]({ view: route.name, sku: route.sku }, "", hash);
 }
 
-function switchView(name, { updateUrl = true } = {}) {
+function switchView(name, { updateUrl = true, sku = "" } = {}) {
   if (!APP_VIEW_NAMES.has(name)) name = "dashboard";
-  if(name!=="detail")discardDetailPhotos($("detail-content"));
-  if (updateUrl && viewFromLocation() !== name) window.history.pushState({ view: name }, "", `#${encodeURIComponent(name)}`);
+  sku = name === "detail" ? String(sku || "").trim() : "";
+  if (name === "detail" && !sku) name = "products";
+  const route = { name, sku };
+  const changed = !sameRoute(activeRoute, route);
+  if (updateUrl) writeRoute(route);
+  if (!changed && !updateUrl) return;
+  const version = ++navigationVersion;
+  activeRoute = route;
+  // A new route invalidates older product requests and unsaved gallery drafts.
+  // Keep no previous product editor in the DOM while loading another product.
+  const detail = $("detail-content");
+  if (changed || name !== "detail") {
+    discardDetailPhotos(detail);
+    detail.replaceChildren();
+    detail.removeAttribute("aria-busy");
+    detail.inert = false;
+    if (pendingAddSize?.container === detail) closeAddSizeModal();
+  }
   window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   document.documentElement.scrollTop = 0;
   document.body.scrollTop = 0;
   $("stage")?.scrollTo?.({ top: 0, left: 0, behavior: "auto" });
-  document.querySelectorAll(".rail-link").forEach((b) => b.classList.toggle("is-active", b.dataset.view === name));
+  document.querySelectorAll(".rail-link").forEach((b) => b.classList.toggle("is-active", b.dataset.view === (name === "detail" ? "products" : name)));
   document.querySelectorAll(".view").forEach((v) => v.classList.toggle("is-active", v.id === `view-${name}`));
   closeDrawer();
   if (name !== "scan") stopCamera();
@@ -266,9 +301,18 @@ function switchView(name, { updateUrl = true } = {}) {
   if (name === "visual") loadVisualSearchStatus();
   if (name === "history") { history.offset = 0; loadHistory(true); }
   window.dispatchEvent(new CustomEvent("myraa:view", {detail:name}));
+  if (name === "detail") return loadProductDetail(route, version);
 }
 
-window.addEventListener("popstate", () => switchView(viewFromLocation(), { updateUrl: false }));
+function restoreRouteFromLocation() {
+  const route = routeFromLocation();
+  writeRoute(route, true);
+  if (!sameRoute(activeRoute, route)) return switchView(route.name, { updateUrl: false, sku: route.sku });
+}
+// Browser Back/Forward and manually opened hash links use the same router.
+// Some browsers emit both events; sameRoute prevents double requests.
+window.addEventListener("popstate", restoreRouteFromLocation);
+window.addEventListener("hashchange", restoreRouteFromLocation);
 
 // Keep dashboard counters and alert state fresh without creating a new timer
 // every time the user changes sidebar pages.
@@ -466,14 +510,39 @@ function productCardHTML(p) {
 
 $("detail-back").addEventListener("click", () => switchView("products"));
 
-async function openProductDetail(sku) {
+function openProductDetail(sku) {
+  const route = { name: "detail", sku: String(sku ?? "").trim() };
+  if (route.sku && sameRoute(activeRoute, route)) return;
+  return switchView("detail", { sku: route.sku });
+}
+
+async function loadProductDetail(route, version) {
+  const container = $("detail-content");
+  const isCurrent = () => version === navigationVersion && sameRoute(activeRoute, route);
+  container.setAttribute("aria-busy", "true");
+  container.innerHTML = '<div class="panel"><p class="hint" role="status">Opening product…</p></div>';
   try {
-    const product = await getJSON(`${API}/products/${encodeURIComponent(sku)}`);
-    document.querySelectorAll(".rail-link").forEach((b) => b.classList.toggle("is-active", b.dataset.view === "products"));
-    document.querySelectorAll(".view").forEach((v) => v.classList.toggle("is-active", v.id === "view-detail"));
-    discardDetailPhotos($("detail-content"));
-    renderDetail(product, $("detail-content"), { showDelete: true });
-  } catch (e) { showToast("Could not open product", true); }
+    const response = await fetch(`${API}/products/${encodeURIComponent(route.sku)}`);
+    if (!isCurrent()) return;
+    if (!response.ok) {
+      const error = new Error("Could not open product");
+      error.status = response.status;
+      throw error;
+    }
+    const product = await response.json();
+    if (!isCurrent()) return;
+    if (!product?.sku || !Array.isArray(product.variants)) throw new Error("Invalid product response");
+    // Normalize the URL to the actual registered SKU (e.g. lowercase links).
+    activeRoute = { name: "detail", sku: product.sku };
+    writeRoute(activeRoute, true);
+    renderDetail(product, container, { showDelete: true });
+  } catch (error) {
+    if (version !== navigationVersion) return;
+    container.innerHTML = `<div class="panel" role="alert"><h2>${error.status === 404 ? "Product not available" : "Could not open product"}</h2><p class="hint">${error.status === 404 ? "This product may have been renamed, deleted or is not in your current workspace." : "Check your connection and try again."}</p><button type="button" class="btn-secondary" data-detail-retry>Try again</button></div>`;
+    container.querySelector("[data-detail-retry]").addEventListener("click", () => switchView("detail", { sku: route.sku }));
+  } finally {
+    if (version === navigationVersion) container.removeAttribute("aria-busy");
+  }
 }
 
 // Gallery drafts never mutate the server until the main Save Changes action.
@@ -677,6 +746,7 @@ function renderDetail(product, container, opts = {}) {
     const msg = container.querySelector("#detail-msg");
     const draft=detailPhotoDrafts.get(container);
     const metadata={sku:container.querySelector("#detail-sku").value.trim().toUpperCase(),name:container.querySelector("#detail-name").value,category:container.querySelector("#detail-category").value};
+    const saveNavigation = navigationVersion;
     button.disabled=true;container.inert=true;
     try {
       let res;
@@ -689,17 +759,25 @@ function renderDetail(product, container, opts = {}) {
       }else{res=await fetch(endpoint,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(metadata)});}
       if (!res.ok) { const err = new Error((await res.json()).detail); err.status = res.status; throw err; }
       const saved=await res.json();
-      if(container.contains(button)){discardDetailPhotos(container);renderDetail(saved,container,opts);}
+      if(container.contains(button)){
+        // Rename the current history entry after a successful save. Refresh
+        // must use the new registered SKU, never the old one or a draft value.
+        if (container === $("detail-content") && activeRoute?.name === "detail" && saved?.sku) {
+          activeRoute = { name: "detail", sku: saved.sku };
+          writeRoute(activeRoute, true);
+        }
+        discardDetailPhotos(container);renderDetail(saved,container,opts);
+      }
       showToast('Product changes saved');
       if(opts.showDelete){window.__keepProductSearch=true;loadLatestProducts();}
     } catch(err){msg.textContent=err.message||'Could not save';msg.className='msg error';if(err.status===409)await window.MYRAAUI.alert(err.message,{title:'Could not save product',variant:'warning'});}
-    finally{button.disabled=false;container.inert=false;}
+    finally{button.disabled=false;if (saveNavigation === navigationVersion) container.inert=false;}
   });
 
   const delBtn = container.querySelector("#detail-delete");
   if (delBtn) delBtn.addEventListener("click", () => {
     askConfirm(`Delete ${product.name}?`, `Moves ${product.sku} and all its sizes to Trash. You can restore it from the Trash tab.`, async () => {
-      try { await apiDelete(`${API}/products/${encodeURIComponent(product.sku)}`); showToast(`${product.sku} moved to Trash`); switchView("products"); loadSummary(); }
+      try { await apiDelete(`${API}/products/${encodeURIComponent(product.sku)}`); showToast(`${product.sku} moved to Trash`); if (container.contains(delBtn)) switchView("products"); loadSummary(); }
       catch (err) { showToast("Could not delete: " + err.message, true); }
     });
   });
@@ -707,7 +785,7 @@ function renderDetail(product, container, opts = {}) {
 
 let pendingAddSize = null;
 function openAddSizeModal(product, container, opts) {
-  pendingAddSize = { product, container, opts };
+  pendingAddSize = { product, container, opts, editor: container.querySelector(".detail-head") };
   $("add-size-product-name").textContent = `${product.name} · ${product.sku}`;
   $("add-size-form").reset();
   $("new-size-stock").value = "0";
@@ -745,8 +823,8 @@ $("add-size-form")?.addEventListener("submit", async (event) => {
       reorder_threshold: $("new-size-threshold").value === "" ? 5 : Number($("new-size-threshold").value),
       target_stock_level: $("new-size-target").value === "" ? 20 : Number($("new-size-target").value),
     });
-    closeAddSizeModal();
-    renderDetail(updated, pending.container, {...pending.opts,preserveDraft:true});
+    if (pendingAddSize === pending) closeAddSizeModal();
+    if (pending.container.contains(pending.editor)) renderDetail(updated, pending.container, {...pending.opts,preserveDraft:true});
     showToast(`Size ${size.toUpperCase()} added`, "success");
     await refreshInventoryViews();
   } catch (error) {
@@ -2266,10 +2344,8 @@ async function loadTrash() {
 
 
 // ---------------- Init ----------------
-const initialView = viewFromLocation();
-if (!window.location.hash || !APP_VIEW_NAMES.has(window.location.hash.replace(/^#\/?/, "").split(/[?&]/, 1)[0] || "")) {
-  window.history.replaceState({ view: initialView }, "", `#${encodeURIComponent(initialView)}`);
-}
-switchView(initialView, { updateUrl: false });
-if (initialView !== "dashboard") loadSummary();
+const initialRoute = routeFromLocation();
+writeRoute(initialRoute, true);
+switchView(initialRoute.name, { updateUrl: false, sku: initialRoute.sku });
+if (initialRoute.name !== "dashboard") loadSummary();
 
