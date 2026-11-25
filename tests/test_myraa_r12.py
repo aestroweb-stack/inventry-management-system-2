@@ -23,7 +23,9 @@ def db(tmp_path):
     engine.dispose()
 
 
-def workbook(rows, headers=HEADERS):
+LEGACY_HEADERS = HEADERS + ["Size Unit Cost", "Product SKU Aliases", "Size SKU Aliases", "Photo Filenames"]
+
+def workbook(rows, headers=LEGACY_HEADERS):
     wb=Workbook(); ws=wb.active; ws.append(headers)
     for r in rows: ws.append(r)
     b=BytesIO(); wb.save(b); return b.getvalue()

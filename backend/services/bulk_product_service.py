@@ -89,7 +89,7 @@ def _design_sku(source_sku: str, size: str) -> str:
 
 
 HEADERS = ["Master SKU", "Product Name", "Category", "Size", "Stock", "Alert Below", "Target Stock",
-           "Default Unit Cost", "Size Unit Cost", "Product SKU Aliases", "Size SKU Aliases", "Photo Filenames"]
+           "Default Unit Cost"]
 
 
 def build_bulk_product_template() -> bytes:
@@ -99,7 +99,7 @@ def build_bulk_product_template() -> bytes:
     ws = wb.active
     ws.title = "Products"
     ws.append(HEADERS)
-    widths = [30, 32, 22, 14, 14, 16, 16, 20, 18, 40, 40, 42]
+    widths = [34, 32, 22, 14, 14, 16, 16, 23]
     for cell in ws[1]:
         cell.font = Font(bold=True, color="FFFFFF", size=11)
         cell.fill = PatternFill("solid", fgColor="0D6454")
@@ -109,23 +109,22 @@ def build_bulk_product_template() -> bytes:
         ws.column_dimensions[get_column_letter(col)].width = width
     for row in range(2, 502):
         for col in range(1, len(HEADERS)+1):
-            ws.cell(row, col).number_format = "@" if col in (1,2,3,4,10,11,12) else "0.00" if col in (8,9) else "0"
+            ws.cell(row, col).number_format = "@" if col in (1,2,3,4) else "0.00" if col == 8 else "0"
     ws.freeze_panes = "E2"
-    ws.auto_filter.ref = f"A1:L{MAX_IMPORT_ROWS+1}"
-    for cols, kind, maximum in [("E:G", "whole", 100000000), ("H:I", "decimal", 99999999)]:
+    ws.auto_filter.ref = f"A1:H{MAX_IMPORT_ROWS+1}"
+    for cols, kind, maximum in [("E:G", "whole", 100000000), ("H:H", "decimal", 99999999)]:
         start, end = cols.split(":")
         dv = DataValidation(type=kind, operator="between", formula1=0, formula2=maximum, allow_blank=True)
         dv.showErrorMessage=True; dv.errorTitle="Invalid number"; dv.error="Enter a valid non-negative value."
         ws.add_data_validation(dv); dv.add(f"{start}2:{end}{MAX_IMPORT_ROWS+1}")
     help_ws = wb.create_sheet("Instructions")
     instructions = [
-        ["MYRAA | Complete bulk product import"],
+        ["MYRAA | Simple bulk product import"],
         ["Fill the Products sheet only. One row per size; repeat the exact Master SKU for the same design. The Master SKU does not include the size suffix."],
         ["Master SKU, Size and Stock are required columns. Blank size means FREE SIZE for legacy compatibility. Stock is opening physical stock, not ordered quantity."],
         ["Product Name is the design identity including color (e.g. DESIGN01_BLACK). Same name with a different SKU is blocked; use distinct design/color names for genuinely different products."],
-        ["Category is optional. Alert Below defaults to 5; Target Stock defaults to 20. Default Unit Cost and Size Unit Cost are optional non-negative INR values. Size cost overrides default cost."],
-        ["Product SKU Aliases: one MARKETPLACE | EXTERNAL-SKU per line; applies to whole product and requires size in orders. Size SKU Aliases: same format, applies only to this row size. Use new lines for multiple aliases. Marketplace may be any platform name."],
-        ["Photo Filenames: optional, one filename per line (maximum 8). Repeat only if identical. Select the actual local image files in the bulk import panel along with the workbook. URLs and embedded Excel pictures are not imported."],
+        ["Category is optional. Alert Below defaults to 5; Target Stock defaults to 20. Default Unit Cost is optional, in INR. All sizes inherit the same default unit cost automatically. Enter it once or repeat the same value for the design."],
+        ["To add photos or link marketplace SKUs, open the product editor after importing. No photos are needed for bulk import."],
         ["Existing master SKU: missing sizes may be added; existing size stock, costs, aliases and photos are not overwritten. Edit existing product details through the product editor. Duplicate rows are reported; conflicting rows skip the whole design."],
         ["Legacy SKU column is accepted and a terminal matching size suffix is grouped. Do not put a size suffix in the new Master SKU column."],
         ["Maximum 20,000 rows / 12 MB for workbook. CSV, XLS and XLSX supported. Example sheet is illustrative only; it is not imported."],
@@ -140,8 +139,8 @@ def build_bulk_product_template() -> bytes:
         help_ws.row_dimensions[row[0].row].height=48
     example=wb.create_sheet("Example - do not import")
     example.append(HEADERS)
-    example.append(["SAMPLE_V_D01_BLACK","D01_BLACK","Kurta set","S",5,2,20,300,320,"Platform A | EXT-D01-BLACK","Platform A | EXT-D01-BLACK-S","D01-front.jpg\nD01-back.jpg"])
-    example.append(["SAMPLE_V_D01_BLACK","D01_BLACK","Kurta set","M",0,2,20,300,None,None,"Platform B | EXT-D01-BLACK-M",None])
+    example.append(["SAMPLE_V_D01_BLACK","D01_BLACK","Kurta set","S",5,2,20,300])
+    example.append(["SAMPLE_V_D01_BLACK","D01_BLACK","Kurta set","M",0,2,20,300])
     for cell in example[1]:
         cell.font=Font(bold=True,color="FFFFFF"); cell.fill=PatternFill("solid",fgColor="0D6454"); cell.alignment=Alignment(wrap_text=True)
     for col,width in enumerate(widths,1): example.column_dimensions[get_column_letter(col)].width=width

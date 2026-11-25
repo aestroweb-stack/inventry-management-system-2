@@ -21,7 +21,7 @@
 <link rel="stylesheet" href="myraa-accessible-v2.css?v=nov24-r4">
 <link rel="stylesheet" href="myraa-premium-nav.css?v=nov24-r4">
 <link rel="stylesheet" href="myraa-feedback.css?v=nov24-r4">
-<link rel="stylesheet" href="myraa-fixes.css?v=nov25-r12">
+<link rel="stylesheet" href="myraa-fixes.css?v=nov25-r13">
 <link rel="stylesheet" href="myraa-responsive-r6.css?v=nov25-r6">
 </head>
 <body>
@@ -493,16 +493,16 @@
     <section id="bulk-product-panel" class="bulk-product-panel" hidden>
       <div class="bulk-product-intro">
         <div class="bulk-product-icon"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
-        <div><h3>Add your full catalog at once</h3><p>One row per size. Import Master SKU, category, stock, purchase costs, linked marketplace SKUs and optional photos together. Download the new format for instructions.</p></div>
+        <div><h3>Add your full catalog at once</h3><p>One row per size. Import your Master SKU, product name, category, stock and default unit cost. All sizes inherit the default cost automatically.</p></div>
       </div>
-      <a id="bulk-product-template" class="template-download" href="/api/products/bulk-template"><span class="template-icon"><i class="fa-solid fa-file-arrow-down"></i></span><span><strong>Download Excel format</strong><small>Includes column guide and import rules</small></span><i class="fa-solid fa-arrow-down download-arrow"></i></a>
+      <a id="bulk-product-template" class="template-download" href="/api/products/bulk-template"><span class="template-icon"><i class="fa-solid fa-file-arrow-down"></i></span><span><strong>Download Excel format</strong><small>8 columns · Instructions and example included</small></span><i class="fa-solid fa-arrow-down download-arrow"></i></a>
       <label id="bulk-product-dropzone" class="bulk-product-dropzone">
         <input type="file" id="bulk-product-file" accept=".xlsx,.xls,.csv" hidden>
         <span class="bulk-upload-icon"><i class="fa-solid fa-cloud-arrow-up"></i></span>
         <strong id="bulk-product-file-title">Choose your filled Excel file</strong>
-        <small id="bulk-product-file-meta">.xlsx, .xls or .csv · up to 20,000 rows</small>
+        <small id="bulk-product-file-meta">.xlsx, .xls or .csv · 12 MB · up to 20,000 rows</small>
       </label>
-      <div class="bulk-photo-field"><label class="field" for="bulk-product-photos">Product photos (optional)</label><input class="input" type="file" multiple id="bulk-product-photos" accept="image/jpeg,image/png,image/webp"><small class="hint">Select local files named in the Photo Filenames column. Only newly created products receive photos.</small></div>
+      <div class="bulk-excel-note"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><span>Excel only. Photos and linked marketplace SKUs can be managed in Edit Product after import.</span></div>
       <div class="bulk-product-actions"><span class="hint">Existing sizes and stock are protected. Duplicate designs are reported.</span><button type="button" id="bulk-product-submit" class="btn-primary" disabled><i class="fa-solid fa-sparkles"></i> Import products</button></div>
       <div id="bulk-product-result" aria-live="polite"></div>
     </section>
@@ -530,14 +530,14 @@
 <footer class="myraa-owner-footer">© 2026 <strong>Hacker Room</strong>. All rights reserved. <a href="mailto:aestroweb@gmail.com">aestroweb@gmail.com</a> · <a href="tel:+918630404031">+91 8630404031</a></footer>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
-<script src="myraa-feedback.js?v=nov25-r12"></script>
+<script src="myraa-feedback.js?v=nov25-r13"></script>
 <script src="myraa-auth-gate.js?v=nov24-r4"></script>
-<script src="app.js?v=nov25-r12"></script>
+<script src="app.js?v=nov25-r13"></script>
 <script src="myraa-signature-v3.js?v=nov24-r4"></script>
 <script src="packing-picklist.js?v=nov25-r11"></script>
-<script src="business-workspace.js?v=nov25-r12"></script>
+<script src="business-workspace.js?v=nov25-r13"></script>
 <script src="product-challan-pages.js?v=nov24-r4"></script>
-<script src="myraa-challan-studio.js?v=nov25-r12"></script>
+<script src="myraa-challan-studio.js?v=nov25-r13"></script>
 <script src="seller-sounds.js?v=nov24-r4"></script>
 <script src="clerk-auth.js?v=nov24-r4"></script>
 <script src="myraa-ui-refresh.js?v=nov24-r4"></script>

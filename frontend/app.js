@@ -457,6 +457,77 @@ async function openProductDetail(sku) {
   } catch (e) { showToast("Could not open product", true); }
 }
 
+// Keep gallery changes independent of the metadata/size editor, including unsaved fields.
+function renderDetailPhotos(product, container) {
+  const host = container.querySelector('.detail-photo-editor');
+  if (!host) return;
+  const photos = [...new Set([product.image_path, ...(product.images || [])].filter(Boolean))];
+  let selected = photos[0] || null;
+  let busy = false;
+  host.innerHTML = `<div class="detail-photo-stage">
+    <label class="detail-photo-box" id="detail-photo-box" role="button" tabindex="0" aria-label="Add or replace main product photo">
+      <span class="detail-photo-placeholder"><i class="fa-solid fa-image"></i><small>Add photo</small></span>
+      <img alt="${esc(product.name)}" hidden><input type="file" accept="image/*" id="detail-photo-input" hidden>
+    </label>
+    <button class="detail-photo-remove" type="button" title="Remove selected photo" aria-label="Remove selected photo" hidden><i class="fa-solid fa-trash-can" aria-hidden="true"></i></button>
+  </div>${photos.length > 1 ? `<div class="detail-photo-thumbnails" aria-label="All product photos">${photos.map((path,i)=>`<button type="button" class="detail-photo-thumb" data-photo-index="${i}" aria-label="Show photo ${i+1}"><img class="detail-photo-thumb-image" src="${esc(path)}?v=${Date.now()}" alt="" loading="lazy"></button>`).join('')}</div>` : ''}`;
+  const photoBox = host.querySelector('#detail-photo-box');
+  const photoInput = host.querySelector('#detail-photo-input');
+  const image = photoBox.querySelector('img');
+  const placeholder = host.querySelector('.detail-photo-placeholder');
+  const remove = host.querySelector('.detail-photo-remove');
+  function select(path) {
+    selected = path;
+    image.hidden = !path;
+    placeholder.hidden = !!path;
+    remove.hidden = !path;
+    if (path) image.src = `${path}?v=${Date.now()}`; else image.removeAttribute('src');
+    host.querySelectorAll('.detail-photo-thumb').forEach(btn=>btn.classList.toggle('is-active', photos[Number(btn.dataset.photoIndex)] === path));
+  }
+  select(selected);
+  function setBusy(value) { busy=value; remove.disabled=value; photoInput.disabled=value; host.querySelectorAll('.detail-photo-thumb').forEach(b=>b.disabled=value); }
+  async function refreshGallery(fresh) {
+    if (container.contains(host)) {
+      // Never overwrite unsaved editor fields or local stock counts.
+      product.image_path=fresh.image_path; product.images=fresh.images || [];
+      renderDetailPhotos(product,container);
+    }
+    window.__keepProductSearch=true;
+    try { await refreshInventoryViews(); } catch (_) { /* gallery mutation already saved */ }
+  }
+  photoBox.addEventListener('keydown', event=>{
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault(); if (!busy) photoInput.click();
+  });
+  host.querySelectorAll('.detail-photo-thumb').forEach(btn=>btn.addEventListener('click',()=>{if(!busy)select(photos[Number(btn.dataset.photoIndex)]);}));
+  remove.addEventListener('click', async event=>{
+    event.preventDefault(); event.stopPropagation();
+    if (busy || !selected) return;
+    const path = selected; setBusy(true);
+    try {
+      if (!await window.MYRAAUI.confirm('Remove this photo from the product? Other photos, sizes and stock will stay unchanged.', {title:'Remove product photo?',confirmText:'Remove photo',variant:'danger'})) return;
+      if (!container.contains(host)) return;
+      const filename = path.split('/').pop();
+      const fresh = await apiDelete(`${API}/products/${encodeURIComponent(product.sku)}/images/${encodeURIComponent(filename)}`);
+      await refreshGallery(fresh);
+      showToast('Photo removed');
+    } catch (err) { showToast('Could not remove photo: ' + err.message, true); }
+    finally {setBusy(false);}
+  });
+  photoInput.addEventListener('change', async ()=>{
+    const file=photoInput.files[0]; if(!file || busy)return;
+    setBusy(true);
+    const fd=new FormData(); fd.append('file',file);
+    try {
+      const res=await fetch(`${API}/products/${encodeURIComponent(product.sku)}/image`,{method:'POST',body:fd});
+      if(!res.ok)throw new Error((await res.json()).detail || res.status);
+      const fresh=await getJSON(`${API}/products/${encodeURIComponent(product.sku)}`);
+      await refreshGallery(fresh); showToast('Photo updated');
+    } catch(err){showToast('Upload failed: '+err.message,true);}
+    finally{photoInput.value='';setBusy(false);}
+  });
+}
+
 // Shared renderer: used by both the Product Detail page and the Scan result
 // panel, so updating a size works identically everywhere.
 function renderDetail(product, container, opts = {}) {
@@ -470,16 +541,11 @@ function renderDetail(product, container, opts = {}) {
       </div>
       <button class="seat-del" type="button"><i class="fa-solid fa-trash-can"></i> Delete size</button>
     </div>`).join("");
-  const productPhotos = [...new Set([...(product.images || []), product.image_path].filter(Boolean))];
 
   container.innerHTML = `
     <div class="detail-head">
       <div class="detail-photo-gallery">
-        <label class="detail-photo-box" id="detail-photo-box" role="button" tabindex="0" aria-label="Change product photo">
-          ${product.image_path ? `<img src="${esc(product.image_path)}?v=${Date.now()}" alt="${esc(product.name)}">` : `<i class="fa-solid fa-image"></i><br><small>Add photo</small>`}
-          <input type="file" accept="image/*" id="detail-photo-input" hidden>
-        </label>
-        ${productPhotos.length > 1 ? `<div class="detail-photo-thumbnails" aria-label="All product photos">${productPhotos.map((path, index) => `<button type="button" class="detail-photo-thumb${path === product.image_path ? " is-active" : ""}" data-photo-path="${esc(path)}" aria-label="Show photo ${index + 1}"><img class="detail-photo-thumb-image" src="${esc(path)}?v=${Date.now()}" alt="" loading="lazy"></button>`).join("")}</div>` : ""}
+        <div class="detail-photo-editor"></div>
       </div>
       <div class="detail-info">
         <input class="input" id="detail-name" value="${esc(product.name)}" placeholder="Product name">
@@ -573,46 +639,7 @@ function renderDetail(product, container, opts = {}) {
 
   container.querySelector("#seat-add").addEventListener("click", () => openAddSizeModal(product, container, opts));
 
-  const photoBox = container.querySelector("#detail-photo-box");
-  const photoInput = container.querySelector("#detail-photo-input");
-  photoBox.addEventListener("keydown", (event) => {
-    if (event.key !== "Enter" && event.key !== " ") return;
-    event.preventDefault();
-    photoInput.click();
-  });
-  container.querySelectorAll(".detail-photo-thumb").forEach((button) => button.addEventListener("click", () => {
-    const path = button.dataset.photoPath;
-    let image = photoBox.querySelector("img");
-    if (!image) {
-      photoBox.querySelector(".detail-photo-failed")?.remove();
-      image = document.createElement("img");
-      photoBox.insertBefore(image, photoInput);
-    }
-    image.alt = `${product.name} product photo`;
-    image.src = `${path}?v=${Date.now()}`;
-    container.querySelectorAll(".detail-photo-thumb").forEach((thumbnail) => thumbnail.classList.toggle("is-active", thumbnail === button));
-  }));
-  photoInput.addEventListener("change", async () => {
-    const file = photoInput.files[0];
-    if (!file) return;
-    const fd = new FormData(); fd.append("file", file);
-    try {
-      const res = await fetch(`${API}/products/${encodeURIComponent(product.sku)}/image`, { method: "POST", body: fd });
-      if (!res.ok) throw new Error((await res.json()).detail || res.status);
-      const data = await res.json();
-      let image = photoBox.querySelector("img");
-      photoBox.querySelector(".detail-photo-failed")?.remove();
-      if (!image) {
-        image = document.createElement("img");
-        photoBox.insertBefore(image, photoInput);
-      }
-      image.src = `${data.image_path}?v=${Date.now()}`;
-      image.alt = `${product.name} product photo`;
-      product.image_path = data.image_path;
-      photoInput.value = "";
-      showToast("Photo updated");
-    } catch (err) { photoInput.value = ""; showToast("Upload failed: " + err.message, true); }
-  });
+  renderDetailPhotos(product, container);
 
   container.querySelector("#detail-save").addEventListener("click", async () => {
     const msg = container.querySelector("#detail-msg");
@@ -722,10 +749,9 @@ $("open-add-product").addEventListener("click", () => {
   $("add-product-msg").textContent = "";
   $("add-product-msg").className = "msg";
   $("bulk-product-file").value = "";
-  $("bulk-product-photos").value = "";
   bulkProductFile = null;
   $("bulk-product-file-title").textContent = "Choose your filled Excel file";
-  $("bulk-product-file-meta").textContent = ".xlsx, .xls or .csv · up to 20,000 rows";
+  $("bulk-product-file-meta").textContent = ".xlsx, .xls or .csv · 12 MB · up to 20,000 rows";
   $("bulk-product-submit").disabled = true;
   $("bulk-product-result").innerHTML = "";
   $("add-product-modal").hidden = false;
@@ -995,7 +1021,7 @@ function showBulkProductFile(file) {
   const submit = $("bulk-product-submit");
   if (!file) {
     $("bulk-product-file-title").textContent = "Choose your filled Excel file";
-    $("bulk-product-file-meta").textContent = ".xlsx, .xls or .csv · up to 20,000 rows";
+    $("bulk-product-file-meta").textContent = ".xlsx, .xls or .csv · 12 MB · up to 20,000 rows";
     submit.disabled = true;
     return;
   }
@@ -1037,8 +1063,7 @@ $("bulk-product-submit").addEventListener("click", async () => {
   }
   bulkProductBusy = true;
   const workbookFile = bulkProductFile;
-  const selectedPhotos = Array.from($("bulk-product-photos").files || []);
-  bulkProductInput.disabled = true; $("bulk-product-photos").disabled = true;
+  bulkProductInput.disabled = true;
   button.disabled = true;
   const original = button.innerHTML;
   button.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Importing…`;
@@ -1050,31 +1075,7 @@ $("bulk-product-submit").addEventListener("click", async () => {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.detail || `Import failed (HTTP ${response.status})`);
     renderBulkProductResult(data);
-    const photoWarnings = [];
-    const photoByName = new Map();
-    for (const file of selectedPhotos) {
-      const key = file.name.toLowerCase();
-      if (!photoByName.has(key)) photoByName.set(key, file);
-      else photoByName.set(key, null);
-    }
-    for (const assignment of data.photo_assignments || []) {
-      const files = assignment.files.map(name => photoByName.get(name.toLowerCase()));
-      if (files.some(file => !file)) { photoWarnings.push(`${assignment.sku}: missing or duplicate photo filename; no photos uploaded.`); continue; }
-      const base = `${API}/products/${encodeURIComponent(assignment.sku)}`;
-      try {
-        const primary = new FormData(); primary.append("file",files[0]);
-        const result = await fetch(`${base}/image`,{method:"POST",body:primary});
-        if (!result.ok) throw new Error((await result.json().catch(()=>({}))).detail || "Main photo failed");
-        if (files.length > 1) {
-          const extra = new FormData(); files.slice(1).forEach(file=>extra.append("files",file));
-          const response = await fetch(`${base}/images`,{method:"POST",body:extra});
-          if (!response.ok) throw new Error((await response.json().catch(()=>({}))).detail || "Extra photos failed");
-        }
-      } catch (e) { photoWarnings.push(`${assignment.sku}: ${e.message || 'Photo upload failed'}`); }
-    }
-    if (photoWarnings.length) box.insertAdjacentHTML("beforeend", `<div class="bulk-row-errors"><strong>Photo upload review (products remain saved)</strong>${photoWarnings.map(w=>`<div>${esc(w)}</div>`).join("")}</div>`);
     if (data.duplicate_warnings) await window.MYRAAUI.alert(`${data.duplicate_warnings} design group(s) contain duplicate products, sizes or conflicting SKU mappings. Existing records were protected. See Rows to review for details.`,{title:"Duplicate catalog entries",variant:"warning"});
-    $("bulk-product-photos").value = "";
     bulkProductFile = null;
     bulkProductInput.value = "";
     $("bulk-product-file-title").textContent = "Import finished — choose another file";
@@ -1091,7 +1092,7 @@ $("bulk-product-submit").addEventListener("click", async () => {
     button.innerHTML = original;
     button.disabled = !bulkProductFile;
     bulkProductDropzone.classList.remove("is-loading");
-    bulkProductBusy = false; bulkProductInput.disabled = false; $("bulk-product-photos").disabled = false;
+    bulkProductBusy = false; bulkProductInput.disabled = false;
   }
 });
 

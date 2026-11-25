@@ -124,7 +124,7 @@ async def authenticated_seller_workspace(request: Request, call_next):
             request.scope["headers"] = [(k, v) for k, v in request.scope["headers"] if k not in (b"if-none-match", b"if-modified-since")]
             response = await call_next(request)
             response.headers["Cache-Control"] = "no-store, max-age=0"
-            response.headers["X-MYRAA-Release"] = "nov25-r12"
+            response.headers["X-MYRAA-Release"] = "nov25-r13"
             return response
     # The public StaticFiles mount must never serve a legacy/global product
     # photo from a nested path that bypasses the seller-specific image route.
@@ -225,7 +225,7 @@ def auth_logout_deprecated():
 
 @app.get("/api/health")
 def health(response: Response):
-    response.headers["X-MYRAA-Release"] = "nov25-r12"
+    response.headers["X-MYRAA-Release"] = "nov25-r13"
     response.headers["Cache-Control"] = "no-store"
     return {"status": "ok"}
 
@@ -802,6 +802,7 @@ def upload_product_image(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
+    lock_catalog(db)
     product = _get_product_by_sku(db, sku)
     content = file.file.read(visual_match_service.MAX_SCAN_BYTES + 1)
     try:
@@ -847,6 +848,7 @@ async def upload_product_reference_images(
     db: Session = Depends(get_db),
 ):
     """Attach up to eight genuine extra views to this product, never to stock rows."""
+    lock_catalog(db)
     product = _get_product_by_sku(db, sku)
     if not files or len(files) > 8:
         raise HTTPException(400, "Choose between 1 and 8 reference photos.")
@@ -866,6 +868,10 @@ async def upload_product_reference_images(
             )
             db.add(image)
             saved.append((image, content, dest))
+        # Adding photos to an empty gallery also sets the first as its main photo.
+        if not product.image_path and saved:
+            product.image_path = saved[0][0].image_path
+            saved[0][0].is_primary = True
         db.flush()
         db.commit()
     except visual_match_service.InvalidProductImage as exc:
@@ -882,6 +888,49 @@ async def upload_product_reference_images(
     for image, content, dest in saved:
         background_tasks.add_task(_index_product_photo_background, product.id, image.id, content, str(dest), int(tenant_id()))
     return {"saved": len(saved), "queued_for_indexing": len(saved), "message": "Photos saved. Visual indexing will finish in the background."}
+
+
+@app.delete("/api/products/{sku}/images/{filename}")
+def delete_product_photo(sku: str, filename: str, db: Session = Depends(get_db)):
+    """Remove one catalog photo, not the product or its inventory.
+
+    The authenticated middleware takes a recovery snapshot before DELETE.
+    Never use a caller-supplied filesystem path or another product's photo.
+    """
+    if not re.fullmatch(r'[a-zA-Z0-9_.-]{1,250}', filename) or filename.startswith('.'):
+        raise HTTPException(404, "Photo not found")
+    path = f"/static/product_images/{filename}"
+    lock_catalog(db)
+    product = _get_product_by_sku(db, sku)
+    removed = [ref for ref in product.reference_images if ref.image_path == path]
+    if product.image_path != path and not removed:
+        raise HTTPException(404, "Photo not found on this product")
+    removed_ids = [ref.id for ref in removed]
+    remaining = sorted((ref for ref in product.reference_images if ref.image_path != path),
+                       key=lambda ref: (not ref.is_primary, ref.id))
+    if product.image_path == path or not product.image_path:
+        product.image_path = remaining[0].image_path if remaining else None
+    for ref in remaining:
+        ref.is_primary = ref.image_path == product.image_path
+    for ref in removed:
+        product.reference_images.remove(ref)
+    db.flush()
+    # Legacy data may reference the same file from another product; don't
+    # remove its physical file while it is still referenced.
+    still_used = (db.query(models.Product.id).filter(models.Product.image_path == path).first()
+                  or db.query(models.ProductImage.id).filter(models.ProductImage.image_path == path).first())
+    db.commit()
+    # PostgreSQL's index has an ON DELETE CASCADE FK; SQLite caches are local.
+    if db.get_bind().dialect.name == 'sqlite':
+        for image_id in removed_ids:
+            visual_search_service.remove_product_embedding(db, product.id, image_id)
+    visual_search_service.clear_visual_cache()
+    if not still_used:
+        try:
+            (seller_image_dir() / filename).unlink(missing_ok=True)
+        except OSError:
+            logger.warning("Photo reference removed, but physical file cleanup failed")
+    return _product_out(_get_product_by_sku(db, sku))
 
 
 @app.post("/api/products/visual-match")

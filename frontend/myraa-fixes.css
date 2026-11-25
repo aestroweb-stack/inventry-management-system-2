@@ -101,7 +101,20 @@
 #stage .myraa-no-sizes i {font-size:22px; color:var(--accent, #15966f);}
 @media(max-width:600px){#stage .chart-head:has(.myraa-movers-actions){flex-wrap:wrap; align-items:flex-start;} #stage .myraa-movers-actions{width:100%; justify-content:flex-start;} #stage .myraa-movers-actions>*{flex:1 1 110px;}}
 
-/* R12: optional bulk photo attachments stay within the modal on all screens. */
-.bulk-photo-field { display:grid; gap:8px; min-width:0; margin:14px 0; }
-.bulk-photo-field .input { width:100%; min-width:0; max-width:100%; box-sizing:border-box; }
-.bulk-photo-field .hint { overflow-wrap:anywhere; }
+/* R13: simple Excel-only import and independent photo removal control. */
+#bulk-product-panel .bulk-excel-note {display:flex;align-items:flex-start;gap:10px;margin:14px 0 0;padding:12px 14px;border:1px solid var(--line);border-radius:11px;background:var(--surface-muted,var(--paper));color:var(--ink-soft);font-size:13px;line-height:1.5;min-width:0;overflow-wrap:anywhere;}
+#bulk-product-panel .bulk-excel-note i {margin-top:3px;color:var(--indigo);flex:none;}
+#bulk-product-panel .bulk-product-actions {margin-top:18px;gap:12px;}
+#bulk-product-panel .bulk-product-actions .btn-primary {min-height:44px;white-space:normal;}
+.detail-photo-editor {display:grid;gap:8px;min-width:0;width:100%;}
+.detail-photo-stage {position:relative;min-width:0;}
+.detail-photo-stage .detail-photo-box {margin:0 auto;}
+.detail-photo-stage [hidden] {display:none!important;}
+.detail-photo-placeholder {display:grid;justify-items:center;gap:8px;}
+.detail-photo-stage .detail-photo-remove {position:absolute;top:10px;right:10px;z-index:2;display:grid;place-items:center;width:36px;height:36px;min-width:36px;min-height:36px;max-height:36px;padding:0;border-radius:10px;border:1px solid #e9a9b0;background:#fff1f2;color:#b42334;box-shadow:0 2px 8px #0002;cursor:pointer;line-height:1;font-size:14px;}
+.detail-photo-stage .detail-photo-remove:hover {background:#b42334;color:#fff;border-color:#b42334;}
+.detail-photo-stage .detail-photo-remove:focus-visible {outline:2px solid #e05565;outline-offset:2px;}
+.detail-photo-stage .detail-photo-remove:disabled {opacity:.55;cursor:wait;}
+:root[data-theme="dark"] .detail-photo-stage .detail-photo-remove {background:#43282c;border-color:#8f4650;color:#ffc0c7;}
+:root[data-theme="dark"] .detail-photo-stage .detail-photo-remove:hover {background:#b42334;color:white;}
+@media(max-width:600px){#bulk-product-panel .bulk-product-actions{flex-direction:column;align-items:stretch;}#bulk-product-panel .bulk-product-actions .btn-primary{width:100%;}.detail-photo-stage .detail-photo-remove{width:40px;height:40px;min-height:40px;max-height:40px;min-width:40px;}}
