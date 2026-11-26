@@ -23,7 +23,7 @@ import enum
 from datetime import datetime, timezone
 
 from sqlalchemy import (
-    Column, Integer, String, Float, DateTime, ForeignKey, Boolean, Enum, Text, UniqueConstraint
+    Column, Integer, String, Float, DateTime, ForeignKey, Boolean, Enum, Text, UniqueConstraint, LargeBinary, BigInteger
 )
 from sqlalchemy.orm import relationship
 
@@ -91,6 +91,17 @@ class ProductImage(Base):
     created_at = Column(DateTime(timezone=True), default=utcnow)
 
     product = relationship("Product", back_populates="reference_images")
+
+
+class LocalVisualVector(Base):
+    """Derived, seller-local photo features; never authoritative inventory data."""
+    __tablename__ = "local_visual_vectors_v1"
+    image_id = Column(Integer, primary_key=True)
+    model_name = Column(String(160), nullable=False)
+    image_path = Column(String(500), nullable=False)
+    mtime_ns = Column(BigInteger, nullable=False)
+    file_size = Column(BigInteger, nullable=False)
+    embedding = Column(LargeBinary, nullable=False)
 
 
 class Variant(Base):

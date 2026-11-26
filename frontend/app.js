@@ -576,7 +576,7 @@ function renderDetailPhotos(product, container) {
     <button class="detail-photo-remove" type="button" title="Remove selected photo" aria-label="Remove selected photo" hidden><i class="fa-solid fa-trash-can" aria-hidden="true"></i></button>
   </div>${photos.length ? `<div class="detail-photo-thumbnails" aria-label="All product photos">${photos.map((item,i)=>`<div class="detail-photo-thumb-item"><button type="button" class="detail-photo-thumb" data-photo-index="${i}" aria-label="Show photo ${i+1}"><img class="detail-photo-thumb-image" src="${esc(src(item))}" alt="" loading="lazy"></button><button type="button" class="detail-thumb-remove" data-remove-index="${i}" title="Remove photo ${i+1}" aria-label="Remove photo ${i+1}"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg></button></div>`).join('')}</div>` : ''}
   <label class="business-gallery-quick-add"><i class="fa-solid fa-plus"></i> Add photos <input type="file" accept="image/jpeg,image/png,image/webp" multiple class="detail-photos-add" hidden></label>
-  <div class="detail-photo-draft-meta"><span>${photos.length} of 8 photos</span>${draft.dirty ? '<strong role="status">Unsaved photo changes</strong>' : ''}</div>
+  <div class="detail-photo-draft-meta"><span>${photos.length} photos</span>${draft.dirty ? '<strong role="status">Unsaved photo changes</strong>' : ''}</div>
   <p class="detail-photo-draft-note">${draft.dirty?'Click Save Changes to apply your photo edits.':'Photo edits are saved with Save Changes.'}</p>`;
   const photoBox = host.querySelector('#detail-photo-box');
   const photoInput = host.querySelector('#detail-photo-input');
@@ -594,7 +594,7 @@ function renderDetailPhotos(product, container) {
   function stageFiles(files,replace=false) {
     if(!files.length)return;
     const replacing=replace&&photos.length>0;
-    if(photos.length+files.length-(replacing?1:0)>8){showToast('Maximum 8 photos per product.',true);return;}
+    if(photos.filter(p=>p.file).length+files.length-(replacing&&photos[draft.selected]?.file?1:0)>8){showToast('Save up to 8 new photos at a time; then add more. Existing photos have no fixed limit.',true);return;}
     if(files.some(f=>!['image/jpeg','image/png','image/webp'].includes(f.type)||!f.size||f.size>10*1024*1024)){showToast('Choose a valid JPG, PNG or WEBP photo up to 10 MB.',true);return;}
     const added=files.map(file=>({file,url:URL.createObjectURL(file)}));
     if(replacing){const old=photos[draft.selected];if(old.file)URL.revokeObjectURL(old.url);photos.splice(draft.selected,1,...added);}
@@ -914,7 +914,7 @@ function updatePhotoAngle(role, file) {
 function refreshProductPhotoSelection() {
   addPhotoFiles = selectedProductPhotos();
   releaseUnusedPhotoPreviewUrls();
-  $("photo-selection-count").textContent = `${addPhotoFiles.length} of 8 photos`;
+  $("photo-selection-count").textContent = `${addPhotoFiles.length} photos`;
   const mainPhoto = addPhotoSlots.front || addPhotoFiles[0] || null;
   $("add-photo-preview").hidden = !mainPhoto;
   $("add-photo-placeholder").hidden = Boolean(mainPhoto);
@@ -968,27 +968,13 @@ function handleProductPhotoInput(event, role) {
   if (!files.length) return;
   if (role === "front") {
     addPhotoSlots.front = files[0];
-    const otherFixed = [addPhotoSlots.back, addPhotoSlots.closeup].filter(Boolean).length;
-    const extraCapacity = Math.max(0, 8 - otherFixed - 1);
-    addPhotoSlots.extra = files.slice(1, 1 + extraCapacity);
-    if (files.length > extraCapacity + 1) showToast("Only the first 8 selected photos can be used for one product.", "info");
+    addPhotoSlots.extra = [...addPhotoSlots.extra, ...files.slice(1)];
   } else if (role === "extra") {
-    const selectedFixed = [addPhotoSlots.front, addPhotoSlots.back, addPhotoSlots.closeup].filter(Boolean).length;
-    const capacity = Math.max(0, 8 - selectedFixed);
     const isAlreadySelected = (file) => [addPhotoSlots.front, addPhotoSlots.back, addPhotoSlots.closeup, ...addPhotoSlots.extra].some((selected) =>
       selected && selected.name === file.name && selected.size === file.size && selected.lastModified === file.lastModified
     );
-    const additions = files.filter((file) => !isAlreadySelected(file));
-    const room = Math.max(0, capacity - addPhotoSlots.extra.length);
-    addPhotoSlots.extra = [...addPhotoSlots.extra, ...additions.slice(0, room)];
-    if (additions.length > room) showToast("Up to 8 photos total are allowed for one product.", "info");
+    addPhotoSlots.extra = [...addPhotoSlots.extra, ...files.filter(file => !isAlreadySelected(file))];
   } else {
-    const replacing = Boolean(addPhotoSlots[role]);
-    if (addPhotoFiles.length - (replacing ? 1 : 0) >= 8) {
-      event.target.value = "";
-      showToast("Up to 8 photos total are allowed for one product.", "error");
-      return;
-    }
     addPhotoSlots[role] = files[0];
   }
   event.target.value = "";
@@ -1050,7 +1036,7 @@ function resetAddForm() {
   updatePhotoAngle("closeup", null);
   $("add-extra-photo-label").textContent = "Add more views";
   $("add-photo-thumbnails").replaceChildren();
-  $("photo-selection-count").textContent = "0 of 8 photos";
+  $("photo-selection-count").textContent = "0 photos";
 }
 resetAddForm();
 $("add-size-row").addEventListener("click", () => addSizeRow());
@@ -1091,10 +1077,11 @@ $("add-product-form").addEventListener("submit", async (e) => {
           const imageError = await imageResponse.json().catch(() => ({}));
           throw new Error(imageError.detail || `Photo upload failed (${imageResponse.status})`);
         }
-        if (addPhotoFiles.length > 1) {
+        for (let offset = 1; offset < addPhotoFiles.length; offset += 8) {
           const extras = new FormData();
-          addPhotoFiles.slice(1).forEach((file) => extras.append("files", file));
-          submitButton.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Saving ${addPhotoFiles.length - 1} more photo${addPhotoFiles.length > 2 ? "s" : ""}…`;
+          const batch = addPhotoFiles.slice(offset, offset + 8);
+          batch.forEach((file) => extras.append("files", file));
+          submitButton.textContent = `Saving photos ${offset + 1}–${offset + batch.length} of ${addPhotoFiles.length}…`;
           const extraResponse = await fetch(`${API}/products/${encodeURIComponent(data.sku)}/images`, { method: "POST", body: extras });
           if (!extraResponse.ok) {
             const imageError = await extraResponse.json().catch(() => ({}));
@@ -1510,7 +1497,7 @@ async function loadVisualSearchStatus() {
     const ready = status.index_ready === true && status.status === "ready";
     if (empty) empty.hidden = count > 0;
     if (count === 0) {
-      el.textContent = "No product photos yet. Add catalog photos to start finding products by image.";
+      el.textContent = "No product photos yet. Add reference photos, or use Master SKU / QR search.";
     } else if (ready && status.semantic_matching_available) {
       el.textContent = `${count} catalog photos available · photo matching ready`;
     } else if (ready) {
@@ -1614,7 +1601,7 @@ async function matchVisualProduct() {
     }
     if (payload.status === "no_match" || !payload.matches?.length) {
       results.hidden = true;
-      setVisualMessage(payload.message || "No catalog photo was similar enough. Try a clear, front-facing photo.", "error");
+      setVisualMessage(payload.message || "No reliable visual match. Try a clearer photo or use Master SKU / QR search.", "error");
       return;
     }
     results.hidden = false;

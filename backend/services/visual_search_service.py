@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import hashlib
+import heapq
+import numpy as np
 import math
 import os
 import time
@@ -19,12 +21,8 @@ from services import visual_match_service
 MODEL_NAME = visual_match_service.MODEL_VERSION
 VECTOR_DIMENSIONS = visual_match_service.VECTOR_DIMENSIONS
 TABLE_NAME = "product_visual_embeddings_siglip2_v1"
-# SQLite fallback is linear-time; higher limits are configurable but require
-# benchmarking on the chosen instance. pgvector remains recommended at scale.
-try:
-    DEV_MAX_CATALOG = max(100, min(3000, int(os.getenv("VISUAL_SEARCH_DEV_MAX_CATALOG", "1200"))))
-except ValueError:
-    DEV_MAX_CATALOG = 1200
+# Batch size controls working memory, not catalog capacity.
+LOCAL_SEARCH_BATCH = 256
 RATE_LIMIT_PER_MINUTE = int(os.getenv("VISUAL_SEARCH_RPM", "30"))
 CACHE_TTL_SECONDS = int(os.getenv("VISUAL_SEARCH_CACHE_SECONDS", "60"))
 REFERENCE_SHORTLIST_SIZE = max(25, int(os.getenv("VISUAL_SEARCH_REFERENCE_SHORTLIST", "100")))
@@ -247,14 +245,40 @@ def index_product_image(db, product_id: int, image_id: int, content: bytes, imag
             SET product_id = EXCLUDED.product_id, model_name = EXCLUDED.model_name,
                 embedding = EXCLUDED.embedding, indexed_at = CURRENT_TIMESTAMP
         """), {"image_id": image_id, "product_id": product_id, "model_name": MODEL_NAME, "embedding": embedding})
-    else:
-        mode = MODEL_NAME if _semantic_local_mode() else "local-color-layout:v1"
-        signature = (mode, "inline", 0, len(content))
-        if image_path:
-            stat = image_path.stat()
-            signature = (mode, str(image_path.resolve()), stat.st_mtime_ns, stat.st_size)
-        with _local_embedding_lock:
-            _local_embeddings[image_id] = (signature, values)
+    elif image_path is not None:
+        from models import ProductImage
+        current = db.query(ProductImage).filter_by(id=image_id, product_id=product_id).first()
+        # A delayed upload job must never index a replaced/deleted reference.
+        if current is None or Path(current.image_path).name != image_path.name:
+            return
+        stat = image_path.stat()
+        _store_local_vector(db, image_id, current.image_path, stat, values)
+
+
+def _local_mode():
+    return MODEL_NAME if _semantic_local_mode() else "local-color-layout:v1"
+
+
+def _float_vector(values):
+    vector = np.asarray(values, dtype='<f4')
+    if vector.shape != (VECTOR_DIMENSIONS,) or not np.isfinite(vector).all():
+        raise VisualSearchUnavailable("Invalid image feature vector.")
+    norm = float(np.linalg.norm(vector))
+    if not math.isfinite(norm) or norm <= 1e-12:
+        raise VisualSearchUnavailable("Empty image feature vector.")
+    return vector / norm
+
+
+def _store_local_vector(db, image_id, path, stat, values):
+    from models import LocalVisualVector
+    from sqlalchemy.dialects.sqlite import insert
+    stmt = insert(LocalVisualVector).values(
+        image_id=image_id, model_name=_local_mode(), image_path=path,
+        mtime_ns=stat.st_mtime_ns, file_size=stat.st_size,
+        embedding=_float_vector(values).astype('<f4').tobytes())
+    db.execute(stmt.on_conflict_do_update(index_elements=['image_id'], set_={
+        key: getattr(stmt.excluded, key) for key in
+        ('model_name', 'image_path', 'mtime_ns', 'file_size', 'embedding')}))
 
 
 def remove_product_embedding(db, product_id: int, image_id: int | None = None) -> None:
@@ -263,12 +287,10 @@ def remove_product_embedding(db, product_id: int, image_id: int | None = None) -
             db.execute(text(f"DELETE FROM {TABLE_NAME} WHERE product_id = :product_id"), {"product_id": product_id})
         else:
             db.execute(text(f"DELETE FROM {TABLE_NAME} WHERE image_id = :image_id"), {"image_id": image_id})
-    with _local_embedding_lock:
-        if image_id is None:
-            for key in [key for key in _local_embeddings if key < 0]:
-                _local_embeddings.pop(key, None)
-        else:
-            _local_embeddings.pop(image_id, None)
+    # The derived cache is never a source of candidate IDs. Deleted references
+    # are excluded by the live catalog join; stale rows cannot become matches.
+    # SQLite cache entries are overwritten on replacement and can be pruned.
+
     clear_visual_cache()
 
 
@@ -300,48 +322,89 @@ def _postgres_search(db, embedding: tuple[float, ...], limit: int) -> list[Searc
 
 
 def _development_search(db, embedding: tuple[float, ...], image_dir: Path, limit: int) -> list[SearchHit]:
-    from models import Product, ProductImage
-    products = db.query(Product).filter(Product.is_deleted == False).all()  # noqa: E712
-    if len(products) > DEV_MAX_CATALOG:
-        raise VisualSearchUnavailable("Local visual search is limited above the development catalog limit. Use PostgreSQL with pgvector.")
-    product_ids = {product.id for product in products}
-    images = db.query(ProductImage).filter(ProductImage.product_id.in_(product_ids)).all() if product_ids else []
-    images_by_product: dict[int, list[ProductImage]] = {}
-    for image in images:
-        images_by_product.setdefault(image.product_id, []).append(image)
-    product_scores: dict[int, tuple[float, str]] = {}
-    for product in products:
-        for image in images_by_product.get(product.id, []):
-            candidate = (image_dir / Path(str(image.image_path)).name).resolve()
+    """Exact batched cosine retrieval, bounded top-k heap of distinct designs.
+
+    Every live reference is considered, including images beyond earlier caps.
+    Existing photos lazily populate a durable seller-local feature cache.
+    No global reference vectors or seller IDs are used for matching.
+    """
+    from models import Product, ProductImage, LocalVisualVector
+    from sqlalchemy import and_, or_
+    root = image_dir.resolve()
+    query = _float_vector(embedding)
+    mode = _local_mode()
+    heap = []
+    last_product, last_image = 0, 0
+    best = None
+    def finish_product(hit):
+        if hit is None:
+            return
+        # Deterministic tie-breaker, one best reference per product.
+        entry = (hit.similarity, -hit.product_id, hit.reference_image_path, hit)
+        if len(heap) < limit:
+            heapq.heappush(heap, entry)
+        elif entry[:3] > heap[0][:3]:
+            heapq.heapreplace(heap, entry)
+    while True:
+        rows = db.query(ProductImage.product_id, ProductImage.id, ProductImage.image_path,
+                        LocalVisualVector.model_name, LocalVisualVector.image_path,
+                        LocalVisualVector.mtime_ns, LocalVisualVector.file_size,
+                        LocalVisualVector.embedding).select_from(ProductImage).join(Product, Product.id == ProductImage.product_id).outerjoin(
+            LocalVisualVector, LocalVisualVector.image_id == ProductImage.id).filter(
+            Product.is_deleted == False,  # noqa: E712
+            or_(ProductImage.product_id > last_product,
+                and_(ProductImage.product_id == last_product, ProductImage.id > last_image))
+        ).order_by(ProductImage.product_id, ProductImage.id).limit(LOCAL_SEARCH_BATCH).all()
+        if not rows:
+            break
+        vectors, refs, pending = [], [], []
+        for pid, iid, path, cached_mode, cached_path, mtime, size, blob in rows:
+            candidate = (root / Path(path).name).resolve()
             try:
-                candidate.relative_to(image_dir.resolve())
+                candidate.relative_to(root)
                 stat = candidate.stat()
-                mode = MODEL_NAME if _semantic_local_mode() else "local-color-layout:v1"
-                signature = (mode, str(candidate), stat.st_mtime_ns, stat.st_size)
-                with _local_embedding_lock:
-                    cached = _local_embeddings.get(image.id)
-                if not cached or cached[0] != signature:
-                    ref_content = candidate.read_bytes()
-                    ref_embedding = _image_embedding(ref_content) if _semantic_local_mode() else visual_match_service.local_visual_embedding(ref_content)
-                    with _local_embedding_lock:
-                        # Bound the in-memory reference cache to avoid runaway
-                        # memory usage on long-running Railway services.
-                        if len(_local_embeddings) >= DEV_MAX_CATALOG * 3:
-                            _local_embeddings.clear()
-                        _local_embeddings[image.id] = (signature, ref_embedding)
+                if (cached_mode == mode and cached_path == path and mtime == stat.st_mtime_ns
+                        and size == stat.st_size and blob is not None and len(blob) == 4 * VECTOR_DIMENSIONS):
+                    vector = np.frombuffer(blob, dtype='<f4')
+                    if not np.isfinite(vector).all() or abs(float(np.linalg.norm(vector)) - 1) > 0.01:
+                        vector = None
                 else:
-                    ref_embedding = cached[1]
-                score = sum(left * right for left, right in zip(embedding, ref_embedding))
-                if score > product_scores.get(product.id, (-1.0, ""))[0]:
-                    product_scores[product.id] = (score, f"/static/product_images/{candidate.name}")
+                    vector = None
+                if vector is None:
+                    with candidate.open('rb') as source:
+                        content = source.read(visual_match_service.MAX_SCAN_BYTES + 1)
+                    values = _image_embedding(content) if _semantic_local_mode() else visual_match_service.local_visual_embedding(content)
+                    vector = _float_vector(values)
+                    pending.append((iid, path, stat, vector))
+                vectors.append(vector)
+                refs.append((pid, path))
             except (OSError, ValueError, visual_match_service.InvalidProductImage):
                 continue
-    return [SearchHit(product_id, score, image_path) for product_id, (score, image_path) in sorted(product_scores.items(), key=lambda item: item[1][0], reverse=True)[:limit]]
+        if vectors:
+            scores = np.einsum('ij,j->i', np.stack(vectors), query)
+            for (pid, path), score in zip(refs, scores):
+                score = float(np.clip(score, -1, 1))
+                if best is not None and pid != best.product_id:
+                    finish_product(best)
+                    best = None
+                if best is None or score > best.similarity:
+                    best = SearchHit(pid, score, path)
+        last_product, last_image = rows[-1][0], rows[-1][1]
+        # Persist derived cache only. A locked cache must not break a search.
+        if pending:
+            try:
+                for iid, path, stat, vector in pending:
+                    _store_local_vector(db, iid, path, stat, vector)
+                db.commit()
+            except Exception:
+                db.rollback()
+    finish_product(best)
+    return [entry[3] for entry in sorted(heap, reverse=True)]
 
 
 def _decide(hits: list[SearchHit]) -> SearchResult:
     if not hits:
-        return SearchResult("no_match", (), "No usable product reference photos are indexed.")
+        return SearchResult("no_match", (), "No usable catalog photos. Add reference photos or search by Master SKU / QR code.")
     top = hits[0]
     if top.similarity < 0.35:
         return SearchResult("no_match", (), "No catalog design looked sufficiently related. Try a clear, closer photo of the garment.")
@@ -354,7 +417,7 @@ def _decide(hits: list[SearchHit]) -> SearchResult:
 def _decide_local(hits: list[SearchHit]) -> SearchResult:
     """Use conservative thresholds for the non-semantic local descriptor."""
     if not hits or hits[0].similarity < 0.66:
-        return SearchResult("no_match", (), "No local visual candidate was similar enough. Try a clear photo with the garment filling the frame.")
+        return SearchResult("no_match", (), "No reliable visual match. Try a clearer photo, add reference photos, or use Master SKU / QR code.")
     top = hits[0]
     margin = top.similarity - hits[1].similarity if len(hits) > 1 else 1.0
     if top.similarity >= 0.995 and margin >= 0.15:

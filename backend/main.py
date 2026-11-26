@@ -761,14 +761,14 @@ def save_product_editor(
         baseline, entries = json.loads(expected), json.loads(gallery)
         if not isinstance(baseline, list) or not all(isinstance(x, str) for x in baseline):
             raise ValueError('Invalid original photos')
-        if not isinstance(entries, list) or len(entries) > 8 or len(files) > 8:
-            raise ValueError('Choose up to 8 photos per product')
+        if not isinstance(entries, list) or len(files) > 8:
+            raise ValueError('Choose up to 8 new photos per save; existing photos are unlimited')
         if not all(type(x) is int or isinstance(x, str) for x in entries):
             raise ValueError('Invalid photo selection')
         if len(set(entries)) != len(entries) or sorted(x for x in entries if type(x) is int) != list(range(len(files))):
             raise ValueError('Invalid photo selection')
     except (ValueError, TypeError) as exc:
-        raise HTTPException(422, 'Invalid editor data. Check product details and the 8-photo limit.') from exc
+        raise HTTPException(422, 'Invalid editor data. Check product details and the maximum of 8 new photos per save.') from exc
     lock_catalog(db)
     product = _get_product_by_sku(db, sku)
     current = _product_out(product)['images']
@@ -951,11 +951,11 @@ async def upload_product_reference_images(
     files: list[UploadFile] = File(...),
     db: Session = Depends(get_db),
 ):
-    """Attach up to eight genuine extra views to this product, never to stock rows."""
+    """Attach a batch of reference photos; the total gallery has no fixed cap."""
     lock_catalog(db)
     product = _get_product_by_sku(db, sku)
     if not files or len(files) > 8:
-        raise HTTPException(400, "Choose between 1 and 8 reference photos.")
+        raise HTTPException(400, "Choose between 1 and 8 reference photos per upload batch.")
     saved: list[tuple[models.ProductImage, bytes, Path]] = []
     try:
         for file in files:
@@ -1045,7 +1045,7 @@ async def visual_product_match(
     db: Session = Depends(get_db),
 ):
     """Return a verified, ambiguous, or no-match result; this route never changes stock."""
-    client_key = request.client.host if request.client else "unknown"
+    client_key = f"seller:{tenant_id()}" if tenant_id() else (request.client.host if request.client else "unknown")
     if not visual_search_service.allow_scan(client_key):
         raise HTTPException(429, "Too many image searches. Please wait a minute and try again.")
     content = await file.read(visual_match_service.MAX_SCAN_BYTES + 1)
@@ -1071,7 +1071,7 @@ async def visual_product_match(
                 "product": _product_out(product),
             })
     status = result.status if matches else "no_match"
-    message = result.message if matches else "No active catalog match is available. Check the product photos or try another photo."
+    message = result.message if matches or result.status == "no_match" else "No active catalog match is available. Try Master SKU, QR code, or add product reference photos."
     return {
         "ranked_designs": len(product_ids),
         "status": status,
@@ -1079,7 +1079,7 @@ async def visual_product_match(
         "message": message,
         "score_type": "cosine_similarity_not_probability",
         "matching_mode": (
-            "SigLIP 2 semantic image embeddings" if engine.dialect.name == "postgresql"
+            "SigLIP 2 semantic image embeddings" if db.get_bind().dialect.name == "postgresql"
             or os.getenv("VISUAL_AI_URL", "").strip()
             else "local color/layout suggestions"
         ),
@@ -1090,7 +1090,7 @@ async def visual_product_match(
 @app.get("/api/visual-search/status")
 def visual_search_status(db: Session = Depends(get_db)):
     """Report safe setup diagnostics for photo search without exposing secrets."""
-    dialect = engine.dialect.name
+    dialect = db.get_bind().dialect.name
     catalog_product_count = 0
     try:
         photo_count = db.query(models.ProductImage).join(models.Product).filter(
@@ -1169,20 +1169,20 @@ def visual_search_status(db: Session = Depends(get_db)):
         # SQLite uses the Pillow fallback unless the private SigLIP service is
         # configured. With the service, query and catalog photos share semantic
         # embeddings, allowing packaged and model-view photos to match.
-        index_ready = photo_count > 0 and catalog_product_count <= visual_search_service.DEV_MAX_CATALOG
+        index_ready = photo_count > 0
     if dialect != "postgresql":
         if not os.getenv("DATABASE_URL", "").strip():
             if external_model_service_ready:
-                message = f"Database: SQLite local mode. SigLIP 2 semantic matching via the private model service is configured for up to {visual_search_service.DEV_MAX_CATALOG} designs. Catalog photos: {photo_count}."
+                message = f"Database: SQLite local mode. SigLIP 2 semantic matching via the private model service is configured. Catalog photos: {photo_count}."
             elif external_model_service:
                 message = "SQLite is available, but the private SigLIP service is not ready or its key is missing. Check VISUAL_AI_URL, VISUAL_AI_API_KEY, and the model service /health endpoint."
             else:
-                message = f"Database: SQLite local mode. Lightweight color/layout suggestions are available for up to {visual_search_service.DEV_MAX_CATALOG} designs. For packaged-photo to model-photo matching, configure the private SigLIP model service. Catalog photos: {photo_count}."
+                message = f"Database: SQLite local mode. Lightweight color/layout suggestions are available. For packaged-photo to model-photo matching, configure the private SigLIP model service. Catalog photos: {photo_count}."
             if os.getenv("RAILWAY_ENVIRONMENT", "").strip():
-                message += " Railway is not connected to PostgreSQL (DATABASE_URL is missing); connect the PostgreSQL service before relying on durable production inventory."
+                message += " Verify persistent seller storage before relying on production inventory."
         else:
             mode_text = "SigLIP 2 semantic matching via the private model service" if external_model_service_ready else "lightweight color/layout suggestions; configure a ready private SigLIP model service for packaged-photo matching"
-            message = f"Database: {dialect}. {mode_text} are available for up to {visual_search_service.DEV_MAX_CATALOG} designs; use PostgreSQL with pgvector for larger catalogs. Catalog photos: {photo_count}."
+            message = f"Database: {dialect}. {mode_text} are available with batched vector search. Catalog photos: {photo_count}."
     elif not postgres_connected:
         message = "Database URL is PostgreSQL, but the app cannot connect to it. Check the Railway PostgreSQL service and DATABASE_URL reference."
     elif not pgvector_extension_installed:
