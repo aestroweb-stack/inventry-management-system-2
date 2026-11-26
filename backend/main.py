@@ -1098,11 +1098,8 @@ async def visual_product_match(
         "matches": matches,
         "message": message,
         "score_type": "cosine_similarity_not_probability",
-        "matching_mode": (
-            "SigLIP 2 semantic image embeddings" if db.get_bind().dialect.name == "postgresql"
-            or os.getenv("VISUAL_AI_URL", "").strip()
-            else "local color/layout suggestions"
-        ),
+        "matching_mode": result.matching_mode or "local color/layout suggestions",
+        "retrieval_engine": result.retrieval_engine or "unknown",
         "notice": "Only a matched result is a strong visual match. Ambiguous results are suggestions; photo search never changes stock.",
     }
 
@@ -1159,7 +1156,9 @@ def visual_search_status(db: Session = Depends(get_db)):
         try:
             import httpx
             service_url = os.getenv("VISUAL_AI_URL", "").strip().rstrip("/")
-            response = httpx.get(f"{service_url}/health", timeout=1.5)
+            response = httpx.get(f"{service_url}/health", timeout=1.5,
+                                 headers={"Authorization": "Bearer " + os.getenv("VISUAL_AI_API_KEY", "").strip()},
+                                 follow_redirects=False, trust_env=False)
             response.raise_for_status()
             health = response.json()
             external_model_service_ready = (
@@ -1173,7 +1172,7 @@ def visual_search_status(db: Session = Depends(get_db)):
     )
     local_matcher_available = dialect != "postgresql"
     model_available = (
-        local_matcher_available and not external_model_service
+        local_matcher_available
         or runtime_installed and not external_model_service
         or external_model_service_ready
     )
@@ -1195,7 +1194,7 @@ def visual_search_status(db: Session = Depends(get_db)):
             if external_model_service_ready:
                 message = f"Database: SQLite local mode. SigLIP 2 semantic matching via the private model service is configured. Catalog photos: {photo_count}."
             elif external_model_service:
-                message = "SQLite is available, but the private SigLIP service is not ready or its key is missing. Check VISUAL_AI_URL, VISUAL_AI_API_KEY, and the model service /health endpoint."
+                message = "SQLite color/layout fallback is available; the private SigLIP service is not ready or its key is missing. Check VISUAL_AI_URL, VISUAL_AI_API_KEY, and the model service /health endpoint."
             else:
                 message = f"Database: SQLite local mode. Lightweight color/layout suggestions are available. For packaged-photo to model-photo matching, configure the private SigLIP model service. Catalog photos: {photo_count}."
             if os.getenv("RAILWAY_ENVIRONMENT", "").strip():

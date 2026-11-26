@@ -8,7 +8,7 @@ import math
 import os
 import time
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from database import tenant_id
 from threading import Lock
@@ -59,6 +59,8 @@ class SearchResult:
     status: str
     matches: tuple[SearchHit, ...]
     message: str
+    matching_mode: str = ""
+    retrieval_engine: str = ""
 
 
 _local_requests: dict[str, deque[float]] = {}
@@ -112,16 +114,20 @@ def _image_embedding(content: bytes) -> tuple[float, ...]:
             files={"file": ("product-image.jpg", content, "image/jpeg")},
             headers={"Authorization": f"Bearer {api_key}"},
             timeout=float(os.getenv("VISUAL_AI_TIMEOUT_SECONDS", "120")),
+            follow_redirects=False, trust_env=False,
         )
         response.raise_for_status()
-        raw = response.json().get("embedding")
+        payload = response.json()
+        if payload.get("model") != MODEL_NAME:
+            raise ValueError("Unexpected visual encoder model version.")
+        raw = payload.get("embedding")
         if not isinstance(raw, list) or len(raw) != VECTOR_DIMENSIONS:
             raise ValueError("Visual model service returned an invalid embedding shape.")
         values = tuple(float(value) for value in raw)
         if not all(math.isfinite(value) for value in values):
             raise ValueError("Visual model service returned non-finite embedding values.")
         _vector_literal(values)
-        return values
+        return tuple(float(x) for x in _float_vector(values))
     except Exception as exc:
         raise visual_match_service.ImageModelUnavailable(
             "The visual model service is unavailable or returned an invalid response."
@@ -321,7 +327,7 @@ def _postgres_search(db, embedding: tuple[float, ...], limit: int) -> list[Searc
     return [SearchHit(int(row.product_id), float(row.similarity), str(row.image_path)) for row in rows]
 
 
-def _development_search(db, embedding: tuple[float, ...], image_dir: Path, limit: int) -> list[SearchHit]:
+def _development_search(db, embedding: tuple[float, ...], image_dir: Path, limit: int, *, fallback_color=False) -> list[SearchHit]:
     """Exact batched cosine retrieval, bounded top-k heap of distinct designs.
 
     Every live reference is considered, including images beyond earlier caps.
@@ -332,7 +338,7 @@ def _development_search(db, embedding: tuple[float, ...], image_dir: Path, limit
     from sqlalchemy import and_, or_
     root = image_dir.resolve()
     query = _float_vector(embedding)
-    mode = _local_mode()
+    mode = "local-color-layout:v1" if fallback_color else _local_mode()
     heap = []
     last_product, last_image = 0, 0
     best = None
@@ -373,9 +379,10 @@ def _development_search(db, embedding: tuple[float, ...], image_dir: Path, limit
                 if vector is None:
                     with candidate.open('rb') as source:
                         content = source.read(visual_match_service.MAX_SCAN_BYTES + 1)
-                    values = _image_embedding(content) if _semantic_local_mode() else visual_match_service.local_visual_embedding(content)
+                    values = _image_embedding(content) if not fallback_color and _semantic_local_mode() else visual_match_service.local_visual_embedding(content)
                     vector = _float_vector(values)
-                    pending.append((iid, path, stat, vector))
+                    if not fallback_color:
+                        pending.append((iid, path, stat, vector))
                 vectors.append(vector)
                 refs.append((pid, path))
             except (OSError, ValueError, visual_match_service.InvalidProductImage):
@@ -452,11 +459,25 @@ def search(db, content: bytes, image_dir: Path, limit: int) -> SearchResult:
             raise VisualSearchUnavailable(f"SigLIP 2 PostgreSQL index unavailable. Build {TABLE_NAME} and retry.") from exc
     else:
         semantic = _semantic_local_mode()
-        embedding = _image_embedding(content) if semantic else visual_match_service.local_visual_embedding(content)
-        from services import visual_ann_service
-        indexed = visual_ann_service.search(db, embedding, image_dir, max(limit, 5))
-        if indexed is not None:
-            return indexed
-        hits = _development_search(db, embedding, image_dir, max(limit, 5))
-        return _decide_semantic_local(hits) if semantic else _decide_local(hits)
-    return _decide(hits)
+        mode = "SigLIP 2 semantic image embeddings" if semantic else "local color/layout suggestions"
+        try:
+            embedding = _image_embedding(content) if semantic else visual_match_service.local_visual_embedding(content)
+            from services import visual_ann_service
+            indexed = visual_ann_service.search(db, embedding, image_dir, max(limit, 5))
+            if indexed is not None:
+                return replace(indexed, matching_mode=mode, retrieval_engine="qdrant_ann")
+            hits = _development_search(db, embedding, image_dir, max(limit, 5))
+            decision = _decide_semantic_local(hits) if semantic else _decide_local(hits)
+            return replace(decision, matching_mode=mode, retrieval_engine="exact_batched")
+        except visual_match_service.ImageModelUnavailable:
+            if not semantic:
+                raise
+            # Never mix encoder spaces or overwrite semantic vectors during an outage.
+            db.rollback()
+            embedding = visual_match_service.local_visual_embedding(content)
+            hits = _development_search(db, embedding, image_dir, max(limit, 5), fallback_color=True)
+            decision = _decide_local(hits)
+            return replace(decision, status="ambiguous" if decision.matches else "no_match",
+                           message="SigLIP service unavailable. Local color/layout suggestions only; verify the exact product. " + decision.message,
+                           matching_mode="local color/layout suggestions", retrieval_engine="exact_color_fallback")
+    return replace(_decide(hits), matching_mode="SigLIP 2 semantic image embeddings", retrieval_engine="pgvector")

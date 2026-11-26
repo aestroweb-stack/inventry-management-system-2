@@ -8,6 +8,8 @@ nearest product.
 from __future__ import annotations
 
 from io import BytesIO
+import os
+import math
 from threading import Lock
 
 from PIL import Image, ImageOps, UnidentifiedImageError
@@ -114,8 +116,9 @@ def _load_encoder():
                 "or install the model-service dependencies, then rebuild the product image index."
             ) from exc
         try:
-            processor = AutoProcessor.from_pretrained(MODEL_ID)
-            model = AutoModel.from_pretrained(MODEL_ID, low_cpu_mem_usage=True).to("cpu")
+            torch.set_num_threads(max(1, min(8, int(os.getenv("VISUAL_AI_CPU_THREADS", "2")))))
+            processor = AutoProcessor.from_pretrained(MODEL_ID, trust_remote_code=False)
+            model = AutoModel.from_pretrained(MODEL_ID, low_cpu_mem_usage=True, use_safetensors=True, trust_remote_code=False).to("cpu")
             model.eval()
             _encoder = (torch, model, processor)
             return _encoder
@@ -136,6 +139,8 @@ def image_embedding(content: bytes) -> tuple[float, ...]:
             embedding = model.get_image_features(**inputs).float()
             embedding = embedding / embedding.norm(dim=-1, keepdim=True).clamp(min=1e-12)
             values = embedding[0].tolist()
+        if len(values) != VECTOR_DIMENSIONS or not all(math.isfinite(v) for v in values) or sum(v*v for v in values) < 1e-12:
+            raise ValueError("Invalid SigLIP output")
         return tuple(float(value) for value in values)
     except Exception as exc:
         raise ImageModelUnavailable("SigLIP 2 could not create an image embedding.") from exc

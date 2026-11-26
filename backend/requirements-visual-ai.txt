@@ -1,0 +1,10 @@
+# Dedicated Railway visual-model service dependencies.
+# CPU PyTorch is installed separately by Dockerfile.visual-ai.
+fastapi>=0.115,<1
+uvicorn[standard]>=0.30,<1
+python-multipart>=0.0.9
+pillow>=10,<13
+transformers>=4.57.1,<5
+accelerate>=1.2,<2
+safetensors>=0.5,<1
+sentencepiece>=0.2,<1

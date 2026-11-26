@@ -1,0 +1,11 @@
+# Dedicated model service ONLY. Build context: repository root.
+FROM python:3.12-slim
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PIP_NO_CACHE_DIR=1 HF_HOME=/model-cache/huggingface HF_HUB_DISABLE_TELEMETRY=1 TOKENIZERS_PARALLELISM=false PORT=8080
+WORKDIR /app/backend
+RUN python -m pip install --index-url https://download.pytorch.org/whl/cpu 'torch==2.8.0' 'torchvision==0.23.0'
+COPY backend/requirements-visual-ai.txt /tmp/requirements-visual-ai.txt
+RUN python -m pip install -r /tmp/requirements-visual-ai.txt && python -m pip check
+COPY backend/visual_model_service.py ./visual_model_service.py
+COPY backend/services/visual_match_service.py ./services/visual_match_service.py
+EXPOSE 8080
+CMD ["sh", "-c", "exec python -m uvicorn visual_model_service:app --host :: --port ${PORT:-8080} --workers 1 --limit-concurrency 8"]
