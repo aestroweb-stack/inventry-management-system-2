@@ -98,12 +98,26 @@ def migrate_legacy_brand_data_explicitly(target_engine=engine):
         """))
         connection.execute(text("ALTER TABLE products DROP COLUMN brand"))
 
-app = FastAPI(title="MYRAA Inventory — Hacker Room", version="2.0")
-
 # Optional derived-index worker; never required to start inventory.
 from services import visual_ann_worker
-app.add_event_handler("startup", visual_ann_worker.start)
-app.add_event_handler("shutdown", visual_ann_worker.shutdown)
+
+
+@asynccontextmanager
+async def app_lifespan(_app: FastAPI):
+    try:
+        visual_ann_worker.start()
+    except Exception:
+        logger.exception("Optional visual index worker failed to start; inventory remains available")
+    try:
+        yield
+    finally:
+        try:
+            visual_ann_worker.shutdown()
+        except Exception:
+            logger.exception("Optional visual index worker failed to stop")
+
+
+app = FastAPI(title="MYRAA Inventory — Hacker Room", version="2.0", lifespan=app_lifespan)
 
 app.include_router(business_router)
 app.include_router(packing_sync_router)
