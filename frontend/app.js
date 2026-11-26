@@ -1498,6 +1498,10 @@ async function loadVisualSearchStatus() {
     if (empty) empty.hidden = count > 0;
     if (count === 0) {
       el.textContent = "No product photos yet. Add reference photos, or use Master SKU / QR search.";
+    } else if (ready && status.ann_index?.state === "indexed") {
+      el.textContent = `${count} catalog photos available · indexed search configured (review matches)`;
+    } else if (ready && status.ann_index?.state === "pending") {
+      el.textContent = `${count} catalog photos available · index syncing; standard search available`;
     } else if (ready && status.semantic_matching_available) {
       el.textContent = `${count} catalog photos available · photo matching ready`;
     } else if (ready) {

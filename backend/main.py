@@ -99,6 +99,12 @@ def migrate_legacy_brand_data_explicitly(target_engine=engine):
         connection.execute(text("ALTER TABLE products DROP COLUMN brand"))
 
 app = FastAPI(title="MYRAA Inventory — Hacker Room", version="2.0")
+
+# Optional derived-index worker; never required to start inventory.
+from services import visual_ann_worker
+app.add_event_handler("startup", visual_ann_worker.start)
+app.add_event_handler("shutdown", visual_ann_worker.shutdown)
+
 app.include_router(business_router)
 app.include_router(packing_sync_router)
 app.include_router(workspace_auth_router)
@@ -1202,7 +1208,10 @@ def visual_search_status(db: Session = Depends(get_db)):
         else:
             message += " SigLIP runtime is not installed and no private model service is configured."
 
+    from services import visual_ann_service
+    ann_status = visual_ann_service.status(db)
     return {
+        "ann_index": ann_status,
         "status": "ready" if (index_ready and model_available) or cloud_vision_fallback else "unavailable",
         "database": dialect,
         "database_url_configured": bool(os.getenv("DATABASE_URL", "").strip()),

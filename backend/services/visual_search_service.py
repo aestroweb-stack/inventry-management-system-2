@@ -453,6 +453,10 @@ def search(db, content: bytes, image_dir: Path, limit: int) -> SearchResult:
     else:
         semantic = _semantic_local_mode()
         embedding = _image_embedding(content) if semantic else visual_match_service.local_visual_embedding(content)
+        from services import visual_ann_service
+        indexed = visual_ann_service.search(db, embedding, image_dir, max(limit, 5))
+        if indexed is not None:
+            return indexed
         hits = _development_search(db, embedding, image_dir, max(limit, 5))
         return _decide_semantic_local(hits) if semantic else _decide_local(hits)
     return _decide(hits)
