@@ -73,10 +73,10 @@ def test_real_photo_build_search_and_isolation(setup):
         assert ann.status(db)=={'state':'indexed','indexed_photos':1}
         assert ann.build(db,ra)=='already_indexed'
         result=visual.search(db,(ra/'ref.png').read_bytes(),ra,5)
-        assert result.status=='ambiguous' and result.matches[0].product_id==1
+        assert result.status=='matched' and result.matches[0].product_id==1
     with tenant_scope(2),Session(b) as db:
         assert ann.build(db,rb)=='indexed'
-        assert visual.search(db,(rb/'ref.png').read_bytes(),rb,5).status=='ambiguous'
+        assert visual.search(db,(rb/'ref.png').read_bytes(),rb,5).status=='matched'
         fake.cross=True
         assert ann.search(db,visual.visual_match_service.local_visual_embedding((rb/'ref.png').read_bytes()),rb,5) is None
         fake.cross=False

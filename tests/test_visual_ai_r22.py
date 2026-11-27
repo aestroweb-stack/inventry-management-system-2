@@ -58,7 +58,7 @@ def test_semantic_reindex_and_outage_keeps_cache(setup,monkeypatch):
         def unavailable(_): raise visual.visual_match_service.ImageModelUnavailable('offline')
         monkeypatch.setattr(visual,'_image_embedding',unavailable)
         result=visual.search(db,content,root,5)
-        assert result.retrieval_engine=='exact_color_fallback' and result.status=='ambiguous'
+        assert result.retrieval_engine=='exact_color_fallback' and result.status=='matched'
         db.expire_all(); row=db.query(LocalVisualVector).one()
         assert row.model_name==visual.MODEL_NAME and row.embedding==previous
         assert ann.status(db)['state']=='indexed'

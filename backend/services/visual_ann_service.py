@@ -229,8 +229,8 @@ def build(db, image_dir: Path, stop=None, force=False):
                 except Exception: log.warning('Incomplete visual generation cleanup pending')
 
 
-def search(db, embedding, image_dir, limit):
-    """None means use exact R20 retrieval. ANN never auto-confirms a design."""
+def search(db, embedding, image_dir, limit, *, content=None):
+    """None means use exact R20 retrieval. Only verified saved photos can be matched by ANN."""
     if not configured(): return None
     from models import ProductImage
     try:
@@ -253,19 +253,27 @@ def search(db, embedding, image_dir, limit):
         rows = _rows(db).filter(ProductImage.id.in_(refs)).all()
         if len(rows) != len(refs): return None
         best = {}
+        tie_digest = None
         for row in rows:
             if row.product_id != refs[row.id]: return None
             _, _, candidate = _cached_vector(row, image_dir.resolve(), mode)
             if candidate is None: return None
             score = float(np.clip(np.dot(candidate,vector),-1,1))
             hit = visual.SearchHit(row.product_id, score, row.image_path)
-            if row.product_id not in best or score > best[row.product_id].similarity: best[row.product_id] = hit
+            previous = best.get(row.product_id)
+            if previous is None or score > previous.similarity:
+                best[row.product_id] = hit
+            elif content is not None and score >= .995 and abs(score - previous.similarity) <= 1e-6:
+                if tie_digest is None:
+                    tie_digest = visual._pixel_digest(content)
+                if visual._reference_matches(hit, image_dir.resolve(), tie_digest):
+                    best[row.product_id] = hit
         fresh = _state(db)
         if not _ready(fresh,seller,collection) or fresh['generation'] != generation: return None
         hits = sorted(best.values(),key=lambda h:(-h.similarity,h.product_id))[:limit]
-        decision = visual._decide_semantic_local(hits) if visual._semantic_local_mode() else visual._decide_local(hits)
+        decision = visual._decide_retrieved(hits, content, image_dir, semantic=visual._semantic_local_mode(), approximate=True)
         if decision.status == 'no_match': return None  # exact fallback on uncertain shortlist
-        return visual.SearchResult('ambiguous',tuple(hits[:5]),'Indexed visual candidates found. Compare the saved photos and confirm the exact design; stock is read from your own catalog.')
+        return decision
     except Exception as exc:
         log.warning('Visual ANN unavailable; exact search fallback (%s)',type(exc).__name__)
         return None

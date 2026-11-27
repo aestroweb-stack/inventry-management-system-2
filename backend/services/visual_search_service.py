@@ -327,7 +327,7 @@ def _postgres_search(db, embedding: tuple[float, ...], limit: int) -> list[Searc
     return [SearchHit(int(row.product_id), float(row.similarity), str(row.image_path)) for row in rows]
 
 
-def _development_search(db, embedding: tuple[float, ...], image_dir: Path, limit: int, *, fallback_color=False) -> list[SearchHit]:
+def _development_search(db, embedding: tuple[float, ...], image_dir: Path, limit: int, *, fallback_color=False, query_content=None) -> list[SearchHit]:
     """Exact batched cosine retrieval, bounded top-k heap of distinct designs.
 
     Every live reference is considered, including images beyond earlier caps.
@@ -342,6 +342,7 @@ def _development_search(db, embedding: tuple[float, ...], image_dir: Path, limit
     heap = []
     last_product, last_image = 0, 0
     best = None
+    tie_digest = None
     def finish_product(hit):
         if hit is None:
             return
@@ -394,8 +395,14 @@ def _development_search(db, embedding: tuple[float, ...], image_dir: Path, limit
                 if best is not None and pid != best.product_id:
                     finish_product(best)
                     best = None
+                hit = SearchHit(pid, score, path)
                 if best is None or score > best.similarity:
-                    best = SearchHit(pid, score, path)
+                    best = hit
+                elif query_content is not None and score >= 0.995 and abs(score - best.similarity) <= 1e-6:
+                    if tie_digest is None:
+                        tie_digest = _pixel_digest(query_content)
+                    if _reference_matches(hit, root, tie_digest):
+                        best = hit
         last_product, last_image = rows[-1][0], rows[-1][1]
         # Persist derived cache only. A locked cache must not break a search.
         if pending:
@@ -409,43 +416,81 @@ def _development_search(db, embedding: tuple[float, ...], image_dir: Path, limit
     return [entry[3] for entry in sorted(heap, reverse=True)]
 
 
+def _review_candidates(hits: list[SearchHit], floor: float, gap: float, cap: int = 3) -> tuple[SearchHit, ...]:
+    """Filter every result, not just the winner; keep only competitive scores."""
+    if not hits or hits[0].similarity < floor:
+        return ()
+    cutoff = max(floor, hits[0].similarity - gap)
+    return tuple(hit for hit in hits if hit.similarity >= cutoff)[:cap]
+
+
 def _decide(hits: list[SearchHit]) -> SearchResult:
-    if not hits:
-        return SearchResult("no_match", (), "No usable catalog photos. Add reference photos or search by Master SKU / QR code.")
-    top = hits[0]
-    if top.similarity < 0.35:
-        return SearchResult("no_match", (), "No catalog design looked sufficiently related. Try a clear, closer photo of the garment.")
-    margin = top.similarity - hits[1].similarity if len(hits) > 1 else 1.0
-    if top.similarity < MIN_SIMILARITY or margin < MIN_MARGIN:
-        return SearchResult("ambiguous", tuple(hits[:5]), "Possible matches found. Review the product photos and confirm the exact design.")
-    return SearchResult("matched", (top,), "A strong visual match was found. Sizes and stock are read live from the database.")
+    return _decide_semantic_local(hits)
 
 
 def _decide_local(hits: list[SearchHit]) -> SearchResult:
-    """Use conservative thresholds for the non-semantic local descriptor."""
-    if not hits or hits[0].similarity < 0.66:
+    candidates = _review_candidates(hits, 0.66, 0.08)
+    if not candidates:
         return SearchResult("no_match", (), "No reliable visual match. Try a clearer photo, add reference photos, or use Master SKU / QR code.")
-    top = hits[0]
-    margin = top.similarity - hits[1].similarity if len(hits) > 1 else 1.0
-    if top.similarity >= 0.995 and margin >= 0.15:
-        return SearchResult("matched", (top,), "A near-identical catalog photo matched. Verify the design before using its stock.")
-    return SearchResult("ambiguous", tuple(hits[:3]), "Local color/layout suggestions. Review the product photos before choosing a design.")
+    # Color histograms can collide for different prints. Never confirm identity
+    # on their cosine score alone; a separate exact-photo check can confirm it.
+    return SearchResult("ambiguous", candidates, "Local color/layout suggestions. Review the product photos before choosing a design.")
 
 
 def _decide_semantic_local(hits: list[SearchHit]) -> SearchResult:
-    """Keep cross-view semantic candidates visible for staff confirmation.
-
-    SigLIP cosine values are not confidence percentages and packaged photos can
-    score lower than model-to-model shots. Below the auto-match threshold, show
-    ranked candidate photos for confirmation instead of hiding them as no-match.
-    """
-    if not hits or hits[0].similarity < 0.35:
+    candidates = _review_candidates(hits, 0.35, 0.10)
+    if not candidates:
         return SearchResult("no_match", (), "No catalog photo looks sufficiently related. Try a closer, clearer photo of the garment.")
     top = hits[0]
     margin = top.similarity - hits[1].similarity if len(hits) > 1 else 1.0
     if top.similarity >= MIN_SIMILARITY and margin >= MIN_MARGIN:
         return SearchResult("matched", (top,), "A strong visual match was found. Verify the product before using its live stock.")
-    return SearchResult("ambiguous", tuple(hits[:5]), "Possible product matches found. Compare the saved photos and confirm the correct design.")
+    return SearchResult("ambiguous", candidates, "Possible product matches found. Compare the saved photos and confirm the correct design.")
+
+
+def _pixel_digest(content: bytes) -> tuple[tuple[int, int], bytes]:
+    """Compare decoded, EXIF-oriented RGB pixels; ignore file metadata."""
+    image = visual_match_service._open_image(content)
+    digest = hashlib.sha256()
+    for y in range(0, image.height, 128):
+        digest.update(image.crop((0, y, image.width, min(y + 128, image.height))).tobytes())
+    return image.size, digest.digest()
+
+
+def _reference_matches(hit: SearchHit, root: Path, query_digest) -> bool:
+    if not hit.reference_image_path:
+        return False
+    try:
+        path = (root / Path(hit.reference_image_path).name).resolve()
+        path.relative_to(root)
+        with path.open('rb') as source:
+            reference = source.read(visual_match_service.MAX_SCAN_BYTES + 1)
+        return _pixel_digest(reference) == query_digest
+    except (OSError, ValueError):
+        return False
+
+
+def _decide_retrieved(hits: list[SearchHit], content: bytes | None, image_dir: Path, *, semantic: bool, approximate: bool = False) -> SearchResult:
+    """Verify exact saved-photo candidates before accepting a descriptor match.
+
+    Only inspect the bounded retrieval shortlist, not the entire catalog. A
+    verified photo is not proof of a globally unique SKU; staff still verify it.
+    """
+    exact = []
+    if content is not None and hits and hits[0].similarity >= 0.995:
+        query = _pixel_digest(content)
+        root = image_dir.resolve()
+        for hit in hits:
+            if hit.similarity >= 0.995 and _reference_matches(hit, root, query):
+                exact.append(hit)
+    if len(exact) == 1:
+        return SearchResult("matched", tuple(exact), "Exact saved photo found among retrieved candidates. Verify the Master SKU before using live stock.")
+    if exact:
+        return SearchResult("ambiguous", tuple(exact), "The same photo is saved against multiple designs. Select the correct Master SKU.")
+    decision = _decide_semantic_local(hits) if semantic else _decide_local(hits)
+    if approximate and decision.status == "matched":
+        return replace(decision, status="ambiguous", message="Strong indexed candidate found. Compare the photo and confirm the Master SKU.")
+    return decision
 
 
 def search(db, content: bytes, image_dir: Path, limit: int) -> SearchResult:
@@ -463,11 +508,11 @@ def search(db, content: bytes, image_dir: Path, limit: int) -> SearchResult:
         try:
             embedding = _image_embedding(content) if semantic else visual_match_service.local_visual_embedding(content)
             from services import visual_ann_service
-            indexed = visual_ann_service.search(db, embedding, image_dir, max(limit, 5))
+            indexed = visual_ann_service.search(db, embedding, image_dir, max(limit, 5), content=content)
             if indexed is not None:
                 return replace(indexed, matching_mode=mode, retrieval_engine="qdrant_ann")
-            hits = _development_search(db, embedding, image_dir, max(limit, 5))
-            decision = _decide_semantic_local(hits) if semantic else _decide_local(hits)
+            hits = _development_search(db, embedding, image_dir, max(limit, 5), query_content=content)
+            decision = _decide_retrieved(hits, content, image_dir, semantic=semantic)
             return replace(decision, matching_mode=mode, retrieval_engine="exact_batched")
         except visual_match_service.ImageModelUnavailable:
             if not semantic:
@@ -475,9 +520,9 @@ def search(db, content: bytes, image_dir: Path, limit: int) -> SearchResult:
             # Never mix encoder spaces or overwrite semantic vectors during an outage.
             db.rollback()
             embedding = visual_match_service.local_visual_embedding(content)
-            hits = _development_search(db, embedding, image_dir, max(limit, 5), fallback_color=True)
-            decision = _decide_local(hits)
-            return replace(decision, status="ambiguous" if decision.matches else "no_match",
-                           message="SigLIP service unavailable. Local color/layout suggestions only; verify the exact product. " + decision.message,
+            hits = _development_search(db, embedding, image_dir, max(limit, 5), fallback_color=True, query_content=content)
+            decision = _decide_retrieved(hits, content, image_dir, semantic=False)
+            return replace(decision,
+                           message="SigLIP service unavailable. " + decision.message,
                            matching_mode="local color/layout suggestions", retrieval_engine="exact_color_fallback")
-    return replace(_decide(hits), matching_mode="SigLIP 2 semantic image embeddings", retrieval_engine="pgvector")
+    return replace(_decide_retrieved(hits, content, image_dir, semantic=True), matching_mode="SigLIP 2 semantic image embeddings", retrieval_engine="pgvector")
