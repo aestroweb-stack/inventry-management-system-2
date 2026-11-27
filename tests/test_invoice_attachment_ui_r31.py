@@ -2,6 +2,7 @@
 Run with playwright, beautifulsoup4 and Chromium installed; never against production.
 """
 import shutil
+import re
 from pathlib import Path
 from urllib.parse import urlsplit
 from io import BytesIO
@@ -76,6 +77,9 @@ def test_attachment_cards_preview_without_download(setup, tmp_path, monkeypatch)
             page.click('#ri-add');page.fill('[data-manual-field="name"]','Outside catalog');page.fill('[data-manual-field="size"]','S');page.fill('[data-line="1"]','7');page.fill('[data-rate="1"]','450');page.fill('#ri-reason','Damaged')
         def cleared():
             pw.expect(page.locator('#ri-message')).to_contain_text('Invoice saved.')
+            pw.expect(page.locator('#ri-detail')).to_be_hidden()
+            pw.expect(page.locator('#return-studio')).to_be_visible()
+            pw.expect(page.locator('#view-returns')).not_to_have_class(re.compile(r'\bri-viewing\b'))
             for selector in ['#ri-party','#ri-number','#ri-reason','#ri-sku']:
                 pw.expect(page.locator(selector)).to_have_value('')
             pw.expect(page.locator('#ri-rows tr')).to_have_count(0)
@@ -92,13 +96,28 @@ def test_attachment_cards_preview_without_download(setup, tmp_path, monkeypatch)
         drafts=c.get('/api/purchase-returns/drafts').json();assert drafts['total']==1;d=drafts['items'][0];assert d['amount']==3150
         assert len(c.get(f'/api/purchase-returns/drafts/{d["id"]}/documents').json()['items'])==1
         assert stock(S)=={'M':10,'L':10}
-        pw.expect(page.locator('#ri-record-list')).to_contain_text('RI-RESET-1');page.locator(f'[data-edit="{d["id"]}"]').click()
+        pw.expect(page.locator('#ri-record-list')).to_contain_text('RI-RESET-1')
+        page.locator(f'[data-draft-view="{d["id"]}"]').click()
+        pw.expect(page.locator('#ri-detail')).to_be_visible()
+        pw.expect(page.locator('#ri-detail')).to_contain_text('SAVED DRAFT')
+        page.click('#ri-close-detail')
+        page.locator(f'[data-edit="{d["id"]}"]').click()
         pw.expect(page.locator('#ri-post')).to_be_enabled();pw.expect(page.locator('#ri-number')).to_have_value('RI-RESET-1');pw.expect(page.locator('#ri-documents [data-preview-doc]')).to_have_count(1)
         preview(page.locator('#ri-documents [data-preview-doc]'))
         page.set_viewport_size({'width':390,'height':844});page.evaluate("document.documentElement.dataset.theme='dark'")
         preview(page.locator('#ri-documents [data-preview-doc]'))
         page.fill('[data-rate="1"]','451');page.click('#ri-save');cleared()
-        pw.expect(page.locator(f'[data-edit="{d["id"]}"]')).to_be_visible();page.locator(f'[data-edit="{d["id"]}"]').click();pw.expect(page.locator('#ri-post')).to_be_enabled();page.click('#ri-post');pw.expect(page.locator('#ri-detail')).to_be_visible();pw.expect(page.locator('#ri-detail')).to_contain_text('POSTED');preview(page.locator('#ri-detail [data-preview-doc]'));page.click('#ri-close-detail')
+        pw.expect(page.locator(f'[data-edit="{d["id"]}"]')).to_be_visible();page.locator(f'[data-edit="{d["id"]}"]').click();pw.expect(page.locator('#ri-post')).to_be_enabled();page.click('#ri-post')
+        pw.expect(page.locator('#ri-message')).to_contain_text('posted.')
+        pw.expect(page.locator('#ri-detail')).to_be_hidden()
+        pw.expect(page.locator('#return-studio')).to_be_visible()
+        pw.expect(page.locator('#ri-number')).to_have_value('')
+        pw.expect(page.locator('#ri-rows tr')).to_have_count(0)
+        pw.expect(page.locator('#ri-tab-posted')).to_have_attribute('aria-pressed','true')
+        pw.expect(page.locator('#ri-post')).to_be_disabled()
+        posted=c.get('/api/purchase-returns').json()['items'][0]
+        page.locator(f'[data-return-id="{posted["id"]}"]').click()
+        pw.expect(page.locator('#ri-detail')).to_be_visible();pw.expect(page.locator('#ri-detail')).to_contain_text('POSTED');preview(page.locator('#ri-detail [data-preview-doc]'));page.click('#ri-close-detail')
         assert c.get('/api/purchase-returns').json()['items'][0]['amount']==3157;assert stock(S)=={'M':10,'L':10}
         # New invoice after save must create a separate draft and not overwrite the first record.
         fill('RI-RESET-2');page.click('#ri-save');cleared();assert c.get('/api/purchase-returns/drafts').json()['total']==1;assert c.get('/api/purchase-returns').json()['total']==1
