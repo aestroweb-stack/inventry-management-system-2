@@ -1149,6 +1149,15 @@ def return_source(purchase_id: int, db: Session = Depends(get_db)):
         purchase_date=invoice.order_date, lines=_return_availability(db, invoice))
 
 
+def _record_only_return(b):
+    return b.purchase_id is None and bool(b.lines) and all(
+        x.variant_id is None and x.purchase_line_id is None and x.balance_after is None and x.inventory_unit_cost is None for x in b.lines)
+
+
+def _posted_return_revision(b):
+    return hashlib.sha256(f"{b.id}:{b.return_no}:{b.created_at.isoformat()}".encode()).hexdigest()
+
+
 def _serialize_return(b, db=None):
     lines = [dict(sku=x.sku, name=x.name, size=x.size, purchase_line_id=x.purchase_line_id,
         quantity=x.quantity, unit_cost=float(x.unit_cost), amount=float(x.unit_cost*x.quantity),
@@ -1163,7 +1172,7 @@ def _serialize_return(b, db=None):
             item['images']=_return_product_photos(v.product) if v and v.product and v.product.sku==line.sku else []
     return dict(id=b.id, purchase_id=b.purchase_id, return_no=b.return_no, party_name=b.party_name,
         purchase_no=b.purchase_no, return_date=b.return_date, reason=b.reason, status='POSTED',
-        created_at=b.created_at, quantity=sum(x.quantity for x in b.lines),
+        created_at=b.created_at, can_correct=_record_only_return(b), correction_revision=_posted_return_revision(b), quantity=sum(x.quantity for x in b.lines),
         amount=float(sum((x.unit_cost*x.quantity for x in b.lines), Decimal('0'))), lines=lines)
 
 
@@ -1440,6 +1449,47 @@ def delete_return_draft(draft_id: int,revision: str=Query(...,min_length=32,max_
 def post_return_draft(draft_id: int,payload: ReturnDraftRevision,db: Session=Depends(get_db)):
     try:
         return _post_supplier_return(None,db,draft_id,payload.revision)
+    except Exception:db.rollback();raise
+
+
+class PostedReturnCorrection(BaseModel):
+    return_no: str = Field(min_length=1, max_length=120)
+    revision: str = Field(min_length=64, max_length=64)
+
+
+def _locked_record_only_return(db, return_id, number, revision):
+    lock_catalog(db)
+    b=db.query(PurchaseReturn).options(selectinload(PurchaseReturn.lines)).filter_by(id=return_id,return_no=number).first()
+    if not b:raise HTTPException(404,'Posted return not found; refresh records')
+    if not _record_only_return(b):raise HTTPException(409,'Inventory-adjusted or linked returns cannot be edited/deleted without a stock reversal')
+    if revision!=_posted_return_revision(b):raise HTTPException(409,'Posted return changed. Refresh records before correcting.')
+    return b
+
+
+def _remove_record_only_return(db,b):
+    db.query(PurchaseReturnLine).filter_by(return_id=b.id).delete(synchronize_session=False)
+    db.query(PurchaseReturn).filter_by(id=b.id).delete(synchronize_session=False)
+
+
+@router.post('/purchase-returns/{return_id}/reopen')
+def reopen_record_only_return(return_id:int,payload:PostedReturnCorrection,db:Session=Depends(get_db)):
+    try:
+        b=_locked_record_only_return(db,return_id,payload.return_no,payload.revision)
+        if db.query(PurchaseReturnDraft).filter_by(return_no=b.return_no).first():raise HTTPException(409,'Return number already used by a draft')
+        body=SupplierReturnDraft(party_name=b.party_name,return_no=b.return_no,return_date=date.fromisoformat(b.return_date),reason=b.reason,lines=[SupplierReturnItem(sku=x.sku,name=x.name,size=x.size,quantity=x.quantity,unit_cost=x.unit_cost,record_only=True) for x in b.lines])
+        d=PurchaseReturnDraft(purchase_id=None,return_no=b.return_no,party_name=b.party_name,purchase_no='',return_date=b.return_date,payload=body.model_dump_json(),quantity=sum(x.quantity for x in b.lines),amount=sum((x.unit_cost*x.quantity for x in b.lines),Decimal('0')),revision=uuid.uuid4().hex)
+        db.add(d);db.flush()
+        db.query(PurchaseReturnDocument).filter_by(return_id=b.id).update({PurchaseReturnDocument.draft_id:d.id,PurchaseReturnDocument.return_id:None},synchronize_session=False)
+        _remove_record_only_return(db,b);db.commit();return _draft_dict(d)
+    except Exception:db.rollback();raise
+
+
+@router.delete('/purchase-returns/{return_id}')
+def delete_record_only_return(return_id:int,return_no:str=Query(...,min_length=1,max_length=120),revision:str=Query(...,min_length=64,max_length=64),db:Session=Depends(get_db)):
+    try:
+        b=_locked_record_only_return(db,return_id,return_no,revision)
+        db.query(PurchaseReturnDocument).filter_by(return_id=b.id).delete(synchronize_session=False)
+        _remove_record_only_return(db,b);db.commit();return {'deleted':True}
     except Exception:db.rollback();raise
 
 

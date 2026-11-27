@@ -178,7 +178,7 @@ async def authenticated_seller_workspace(request: Request, call_next):
         # A consistent on-volume snapshot is captured BEFORE destructive API
         # methods. If the volume is full or the backup cannot be validated,
         # reject the delete instead of losing the only recoverable copy.
-        if (request.method == "DELETE" and path.startswith("/api/")) or (request.method == "POST" and path.startswith("/api/products/") and path.endswith("/editor-save")):
+        if (request.method == "DELETE" and path.startswith("/api/")) or (request.method == "POST" and ((path.startswith("/api/products/") and path.endswith("/editor-save")) or (path.startswith("/api/purchase-returns/") and path.endswith("/reopen")))):
             try:
                 await asyncio.to_thread(recovery_service.create_snapshot, account.id, f"Before {request.method} {path[:110]}")
             except Exception:

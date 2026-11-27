@@ -324,3 +324,14 @@
  #return-studio #ri-reason{font-size:16px}
 }
 #return-studio .ri-table .ri-manual-inputs input{text-align:left}
+
+/* R29: image preview, readable record actions and direct delete-only rows. */
+#view-challans .cs-file-thumb .cs-file-preview{position:static;display:block;width:auto;height:auto;min-height:0;padding:0;border:0;border-radius:6px;background:transparent;cursor:zoom-in;color:inherit;box-shadow:none}
+.cs-file-thumb .cs-file-preview:focus-visible{outline:2px solid #079b73;outline-offset:2px}
+.myraa-invoice-photo{max-width:min(94vw,900px);width:900px;max-height:92dvh;overflow:auto;box-sizing:border-box}
+.myraa-invoice-photo .ri-gallery-main{height:min(70dvh,680px);cursor:default}
+.myraa-invoice-preview-tools{display:flex;justify-content:flex-end;gap:8px}
+#return-studio .ri-row-actions{justify-content:center}#view-returns .invoice-record-actions{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+#view-returns .invoice-record-actions button:disabled{opacity:.45;cursor:not-allowed}
+#return-studio .ri-document small{display:block;color:var(--muted,#648276)}
+@media(max-width:700px){#return-studio .ri-row-actions{justify-content:flex-end}.myraa-invoice-photo{padding:12px}.myraa-invoice-photo .ri-gallery-main{height:60dvh}}
