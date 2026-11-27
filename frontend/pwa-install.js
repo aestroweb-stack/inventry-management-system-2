@@ -1,13 +1,19 @@
 (() => {
   'use strict';
   const standalone = window.matchMedia('(display-mode: standalone)');
-  const installed = () => standalone.matches || navigator.standalone === true;
+  const mobile = window.matchMedia('(pointer: coarse)');
+  const touchDevice = () => mobile.matches || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  let installedHere = false;
+  try { installedHere = localStorage.getItem('myraa-pwa-installed') === '1'; } catch {}
+  const installed = () => standalone.matches || navigator.standalone === true || installedHere;
+  function markInstalled() { installedHere = true; try { localStorage.setItem('myraa-pwa-installed','1'); } catch {} }
   const triggers = [...document.querySelectorAll('[data-myraa-install]')];
   let pendingPrompt = null;
   let promptBusy = false;
   function sync() {
-    document.documentElement.classList.toggle('myraa-standalone', installed());
-    for (const button of triggers) button.hidden = installed();
+    document.documentElement.classList.toggle('myraa-standalone', standalone.matches || navigator.standalone === true);
+    if (standalone.matches || navigator.standalone === true) markInstalled();
+    for (const button of triggers) button.hidden = !touchDevice() || installed();
   }
   function instructions() {
     let dialog = document.getElementById('myraa-install-dialog');
@@ -22,14 +28,16 @@
     if (typeof dialog.showModal === 'function') { if (!dialog.open) dialog.showModal(); }
     else { window.alert('In Chrome, open the browser menu and choose Install app or Add to Home screen. In Safari, choose Share → Add to Home Screen.'); }
   }
-  window.addEventListener('beforeinstallprompt', event => { event.preventDefault(); pendingPrompt = event; sync(); });
-  window.addEventListener('appinstalled', () => { pendingPrompt = null; for (const button of triggers) button.hidden = true; });
+  window.addEventListener('beforeinstallprompt', event => { if (!touchDevice() || !triggers.length) return; event.preventDefault(); pendingPrompt = event; sync(); });
+  window.addEventListener('appinstalled', () => { pendingPrompt = null; markInstalled(); sync(); });
   standalone.addEventListener?.('change', sync);
+  mobile.addEventListener?.('change', sync);
+  window.addEventListener('storage', e => { if(e.key === 'myraa-pwa-installed') { installedHere=e.newValue==='1'; sync(); } });
   for (const button of triggers) button.addEventListener('click', async () => {
-    if (installed() || promptBusy) return;
+    if (!touchDevice() || installed() || promptBusy) return;
     if (!pendingPrompt) { instructions(); return; }
     const prompt = pendingPrompt; pendingPrompt = null; promptBusy = true;
-    try { await prompt.prompt(); const choice = await prompt.userChoice; if (choice?.outcome === 'accepted') for (const button of triggers) button.hidden = true; }
+    try { await prompt.prompt(); const choice = await prompt.userChoice; if (choice?.outcome === 'accepted') { markInstalled(); sync(); } }
     catch { instructions(); }
     finally { promptBusy = false; }
   });

@@ -1028,6 +1028,12 @@ def _manual_variant(db, sku, size):
 
 def _manual_row(db, item):
     sku=_return_text(item.sku); size=_return_text(item.size)
+    # A deliberately manual line never affects inventory, even if its text
+    # happens to match a catalog SKU. Reject inconsistent linked identities.
+    if item.record_only:
+        if item.variant_id is not None:
+            raise HTTPException(409, 'Record-only items cannot have a stock variant')
+        return (item, None, sku, _return_text(item.name) if item.name.strip() else sku, size, None)
     product,v=_manual_variant(db,sku,size)
     if v is None:
         if not item.record_only or item.variant_id is not None:
@@ -1051,6 +1057,22 @@ def _manual_rows(db,payload):
     return rows
 
 
+def _return_product_photos(product):
+    if product is None or product.is_deleted:
+        return []
+    paths = [product.image_path] + [x.image_path for x in sorted(product.reference_images, key=lambda x: (not x.is_primary, x.id))]
+    return list(dict.fromkeys(x for x in paths if x and re.fullmatch(r'/static/product_images/[a-zA-Z0-9_.-]{1,250}', x) and not x.rsplit('/',1)[-1].startswith('.')))
+
+
+@router.get('/purchase-returns/catalog-search')
+def search_return_catalog(q: str=Query(...,min_length=1,max_length=100),db:Session=Depends(get_db)):
+    q=q.strip()
+    if not q:return {'items':[]}
+    term=q.upper()
+    products=db.query(models.Product).options(selectinload(models.Product.variants),selectinload(models.Product.reference_images)).filter(models.Product.is_deleted.is_(False),or_(func.upper(models.Product.sku).contains(term,autoescape=True),func.upper(models.Product.name).contains(term,autoescape=True))).order_by(case((func.upper(models.Product.sku)==term,0),else_=1),models.Product.sku).limit(12).all()
+    return {'items':[dict(sku=p.sku,name=p.name,sizes=[v.size for v in p.variants if not v.is_deleted],image_path=next(iter(_return_product_photos(p)),None)) for p in products]}
+
+
 @router.get('/purchase-returns/catalog')
 def return_catalog(sku: str=Query(...,min_length=1,max_length=64),db:Session=Depends(get_db)):
     products=db.query(models.Product).filter(func.upper(models.Product.sku)==sku.strip().upper()).all()
@@ -1060,7 +1082,7 @@ def return_catalog(sku: str=Query(...,min_length=1,max_length=64),db:Session=Dep
     for v in p.variants:
         if v.is_deleted:continue
         cost=v.cost_record.unit_cost if v.cost_record else p.cost_record.unit_cost if p.cost_record else None
-        items.append(dict(variant_id=v.id,sku=p.sku,name=p.name,size=v.size,stock=v.current_stock if v.last_counted_at is not None else None,unit_cost=float(cost) if cost is not None else None))
+        items.append(dict(variant_id=v.id,sku=p.sku,name=p.name,size=v.size,stock=v.current_stock if v.last_counted_at is not None else None,unit_cost=float(cost) if cost is not None else None,images=_return_product_photos(p)))
     return {'found':True,'items':items}
 
 
@@ -1102,6 +1124,7 @@ def _return_availability(db, invoice):
         rows.append(dict(line_id=line.id, sku=line.sku, name=line.name, size=line.size,
             received=line.qty_received, returned=prior, stock=stock, available=available,
             unit_cost=float(line.unit_cost) if line.unit_cost is not None else None,
+            images=_return_product_photos(v.product) if v else [],
             note='' if v and v.last_counted_at is not None and cost is not None and line.unit_cost is not None else 'Original active receipt or costing unavailable; review inventory.'))
     return rows
 
@@ -1126,10 +1149,18 @@ def return_source(purchase_id: int, db: Session = Depends(get_db)):
         purchase_date=invoice.order_date, lines=_return_availability(db, invoice))
 
 
-def _serialize_return(b):
+def _serialize_return(b, db=None):
     lines = [dict(sku=x.sku, name=x.name, size=x.size, purchase_line_id=x.purchase_line_id,
         quantity=x.quantity, unit_cost=float(x.unit_cost), amount=float(x.unit_cost*x.quantity),
         inventory_unit_cost=float(x.inventory_unit_cost) if x.inventory_unit_cost is not None else None, balance_after=x.balance_after, record_only=x.variant_id is None) for x in b.lines]
+    if db is not None:
+        # Current catalog photos, not historical snapshots. Never match a new
+        # product by a reused SKU for an inventory-adjusted historical line.
+        ids={x.variant_id for x in b.lines if x.variant_id is not None}
+        variants={v.id:v for v in db.query(models.Variant).options(joinedload(models.Variant.product).selectinload(models.Product.reference_images)).filter(models.Variant.id.in_(ids)).all()} if ids else {}
+        for item,line in zip(lines,b.lines):
+            v=variants.get(line.variant_id)
+            item['images']=_return_product_photos(v.product) if v and v.product and v.product.sku==line.sku else []
     return dict(id=b.id, purchase_id=b.purchase_id, return_no=b.return_no, party_name=b.party_name,
         purchase_no=b.purchase_no, return_date=b.return_date, reason=b.reason, status='POSTED',
         created_at=b.created_at, quantity=sum(x.quantity for x in b.lines),
@@ -1364,6 +1395,34 @@ def get_return_draft(draft_id: int,db: Session=Depends(get_db)):
     return _draft_dict(_get_return_draft(db,draft_id))
 
 
+@router.get('/purchase-returns/drafts/{draft_id}/view')
+def view_return_draft(draft_id: int,db:Session=Depends(get_db)):
+    d=_get_return_draft(db,draft_id); result=_draft_dict(d); payload=result['payload']; lines=[]
+    if d.purchase_id is not None:
+        invoice=db.query(PurchaseChallan).options(selectinload(PurchaseChallan.lines)).filter_by(id=d.purchase_id).first()
+        originals={x.id:x for x in invoice.lines} if invoice else {}
+        for item in payload['lines']:
+            x=originals.get(item['line_id']);v=_return_variant(db,invoice,x) if x else None
+            rate=float(x.unit_cost or 0) if x else 0
+            lines.append(dict(sku=x.sku if x else '',name=x.name if x else 'Original line unavailable',size=x.size if x else '',quantity=item['quantity'],unit_cost=rate,amount=rate*item['quantity'],record_only=False,images=_return_product_photos(v.product) if v else []))
+    else:
+        ids={x['variant_id'] for x in payload['lines'] if x.get('variant_id')}
+        variants={v.id:v for v in db.query(models.Variant).options(joinedload(models.Variant.product).selectinload(models.Product.reference_images)).filter(models.Variant.id.in_(ids)).all()} if ids else {}
+        for item in payload['lines']:
+            v=variants.get(item.get('variant_id'));rate=float(item['unit_cost'])
+            lines.append({**item,'unit_cost':rate,'amount':rate*item['quantity'],'images':_return_product_photos(v.product) if v and v.product.sku==item['sku'] else []})
+    return {**result,'reason':payload.get('reason',''),'lines':lines}
+
+
+@router.get('/purchase-returns/drafts/{draft_id}/export')
+def export_one_return_draft(draft_id:int,db:Session=Depends(get_db)):
+    d=view_return_draft(draft_id,db)
+    rows=[['Return No','Supplier','Date','Master SKU','Product','Size','Quantity','Rate INR','Value INR','Type','Status']]
+    for x in d['lines']:
+        rows.append([d['return_no'],d['party_name'],d['return_date'],x['sku'],x['name'],x['size'],x['quantity'],x['unit_cost'],x['amount'],'Record only' if x.get('record_only') else 'Inventory return','DRAFT'])
+    return StreamingResponse(io.BytesIO(_simple_xlsx(rows)),media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',headers={'Content-Disposition':f'attachment; filename="MYRAA_Return_Draft_{draft_id}.xlsx"'})
+
+
 @router.put('/purchase-returns/drafts/{draft_id}')
 def update_return_draft(draft_id: int,payload: ReturnDraftUpdate,db: Session=Depends(get_db)):
     return _save_return_draft(db,payload,draft_id)
@@ -1387,14 +1446,14 @@ def post_return_draft(draft_id: int,payload: ReturnDraftRevision,db: Session=Dep
 @router.get('/purchase-returns/periods')
 def return_periods(report_date: date,db: Session=Depends(get_db)):
     def totals(start=None,end=None):
-        posted=db.query(func.count(func.distinct(PurchaseReturn.id)),func.coalesce(func.sum(PurchaseReturnLine.quantity),0),func.coalesce(func.sum(PurchaseReturnLine.quantity*PurchaseReturnLine.unit_cost),0)).join(PurchaseReturnLine,PurchaseReturnLine.return_id==PurchaseReturn.id)
+        posted=db.query(func.count(func.distinct(PurchaseReturn.id)),func.coalesce(func.sum(PurchaseReturnLine.quantity),0),func.coalesce(func.sum(PurchaseReturnLine.quantity*PurchaseReturnLine.unit_cost),0),func.coalesce(func.sum(case((PurchaseReturnLine.variant_id.is_not(None),PurchaseReturnLine.quantity),else_=0)),0)).join(PurchaseReturnLine,PurchaseReturnLine.return_id==PurchaseReturn.id)
         drafts=db.query(func.count(PurchaseReturnDraft.id),func.coalesce(func.sum(PurchaseReturnDraft.quantity),0),func.coalesce(func.sum(PurchaseReturnDraft.amount),0))
         if start:
             posted=posted.filter(PurchaseReturn.return_date>=start);drafts=drafts.filter(PurchaseReturnDraft.return_date>=start)
         if end:
             posted=posted.filter(PurchaseReturn.return_date<=end);drafts=drafts.filter(PurchaseReturnDraft.return_date<=end)
-        n,q,a=posted.one();dn,dq,da=drafts.one()
-        return dict(count=n+dn,posted_count=n,draft_count=dn,quantity=int(q),amount=float(a),pending_quantity=int(dq),pending_amount=float(da))
+        n,q,a,adjusted=posted.one();dn,dq,da=drafts.one()
+        return dict(count=n+dn,posted_count=n,draft_count=dn,quantity=int(q),amount=float(a),pending_quantity=int(dq),pending_amount=float(da),adjusted_quantity=int(adjusted),record_only_quantity=int(q-adjusted))
     day=report_date.isoformat();month=day[:7]
     return dict(day=totals(day,day),month=totals(month+'-01',month+'-31'),all=totals())
 
@@ -1541,7 +1600,7 @@ def get_supplier_return(return_id: int, db: Session = Depends(get_db)):
     b = db.query(PurchaseReturn).options(selectinload(PurchaseReturn.lines)).filter_by(id=return_id).first()
     if not b:
         raise HTTPException(404, 'Return invoice not found')
-    return _serialize_return(b)
+    return _serialize_return(b, db)
 
 
 @router.get('/purchase-returns/{return_id}/export')
