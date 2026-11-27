@@ -124,6 +124,61 @@ def tenant_scope(account_id):
         _tenant_id.reset(token)
 
 
+def upgrade_return_schema(bind):
+    """R25: make original purchase optional without modifying purchase records.
+
+    Existing SQLite workspaces need a transactional table rebuild. All other
+    columns/IDs are copied verbatim; existing document foreign keys keep their
+    original table names. No work on a fresh schema.
+    """
+    from sqlalchemy.schema import CreateTable, CreateIndex
+    tables = {
+        'myraa_purchase_returns': ('purchase_id',),
+        'myraa_purchase_return_lines': ('purchase_line_id', 'variant_id', 'inventory_unit_cost', 'balance_after'),
+        'myraa_purchase_return_drafts': ('purchase_id',),
+    }
+    if not all(n in Base.metadata.tables for n in tables):
+        return
+    if bind.dialect.name == 'postgresql':
+        with bind.begin() as c:
+            for name, cols in tables.items():
+                for col in cols:
+                    c.exec_driver_sql(f'ALTER TABLE "{name}" ALTER COLUMN "{col}" DROP NOT NULL')
+        return
+    if bind.dialect.name != 'sqlite':
+        raise RuntimeError('Return schema upgrade requires SQLite or PostgreSQL')
+    # Raw DBAPI transaction ensures DDL rolls back too (SQLite legacy mode).
+    with bind.connect() as c:
+        raw = c.connection.driver_connection
+        fk = raw.execute('PRAGMA foreign_keys').fetchone()[0]
+        raw.execute('PRAGMA foreign_keys=OFF')
+        try:
+            raw.execute('BEGIN IMMEDIATE')
+            for name, cols in tables.items():
+                info = raw.execute(f'PRAGMA table_info("{name}")').fetchall()
+                if not any(r[1] in cols and r[3] for r in info):
+                    continue
+                table = Base.metadata.tables[name]
+                tmp = name + '_r25_upgrade'
+                ddl = str(CreateTable(table).compile(dialect=bind.dialect))
+                ddl = ddl.replace('CREATE TABLE ' + name + ' ', 'CREATE TABLE ' + tmp + ' ', 1)
+                if 'CREATE TABLE ' + tmp + ' ' not in ddl:
+                    raise RuntimeError('Unexpected return migration DDL')
+                columns = ', '.join('"'+col.name+'"' for col in table.columns)
+                raw.execute(ddl)
+                raw.execute(f'INSERT INTO "{tmp}" ({columns}) SELECT {columns} FROM "{name}"')
+                raw.execute(f'DROP TABLE "{name}"')
+                raw.execute(f'ALTER TABLE "{tmp}" RENAME TO "{name}"')
+                for index in table.indexes:
+                    raw.execute(str(CreateIndex(index).compile(dialect=bind.dialect)))
+            raw.commit()
+        except Exception:
+            raw.rollback()
+            raise
+        finally:
+            raw.execute('PRAGMA foreign_keys=' + str(fk))
+
+
 def tenant_engine(account_id):
     if os.getenv('RAILWAY_ENVIRONMENT') and not os.getenv('RAILWAY_VOLUME_MOUNT_PATH') and not os.getenv('MYRAA_SELLER_DB_ROOT'):
         raise RuntimeError('Railway persistent volume required; configure RAILWAY_VOLUME_MOUNT_PATH=/data')
@@ -139,6 +194,7 @@ def tenant_engine(account_id):
             # All inventory/business tables are registered at startup. The
             # workspace identity tables in this DB are unused, but harmless.
             Base.metadata.create_all(bind=local)
+            upgrade_return_schema(local)
             _tenant_engines[key] = local
         return _tenant_engines[key]
 

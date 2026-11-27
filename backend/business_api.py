@@ -21,7 +21,7 @@ from typing import Optional, Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form, Query
 from fastapi.responses import FileResponse, StreamingResponse, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import func, or_, case, update
 from sqlalchemy.orm import Session, joinedload, selectinload
 
@@ -983,16 +983,85 @@ def edit_manual_challan(batch_id:int,payload:ChallanDraft,db:Session=Depends(get
 
 # Supplier returns: financially separate from receipts, atomic outbound stock.
 class SupplierReturnItem(BaseModel):
-    line_id: int = Field(gt=0, strict=True)
+    line_id: Optional[int] = Field(default=None, gt=0, strict=True)
+    variant_id: Optional[int] = Field(default=None, gt=0, strict=True)
+    sku: str = Field(default='', max_length=64)
+    size: str = Field(default='', max_length=20)
+    name: str = Field(default='', max_length=300)
+    unit_cost: Optional[Decimal] = Field(default=None, ge=0, le=99999999, decimal_places=2)
+    record_only: bool = False
     quantity: int = Field(gt=0, le=1000000, strict=True)
 
 
 class SupplierReturnDraft(BaseModel):
-    purchase_id: int = Field(gt=0, strict=True)
+    purchase_id: Optional[int] = Field(default=None, gt=0, strict=True)
+    party_name: str = Field(default='', max_length=180)
     return_no: str = Field(min_length=1, max_length=120)
     return_date: date
-    reason: str = Field(min_length=1, max_length=500)
+    reason: str = Field(default='', max_length=500)
     lines: list[SupplierReturnItem] = Field(min_length=1, max_length=10000)
+
+    @model_validator(mode='after')
+    def check_mode(self):
+        if self.purchase_id is not None:
+            if not self.reason.strip() or any(x.line_id is None for x in self.lines):
+                raise ValueError('Original purchase lines and reason required')
+        elif not self.party_name.strip() or any(x.line_id is not None or not x.sku.strip() or not x.size.strip() or x.unit_cost is None for x in self.lines):
+            raise ValueError('Supplier, SKU, size, quantity and return rate required')
+        return self
+
+
+def _manual_variant(db, sku, size):
+    products = db.query(models.Product).filter(func.upper(models.Product.sku)==sku.upper()).all()
+    if len(products)>1:
+        raise HTTPException(409, 'Ambiguous Master SKU; check catalog')
+    if not products:
+        return None, None
+    product=products[0]
+    if product.is_deleted:
+        raise HTTPException(409, 'Product is in Trash; restore it before returning stock')
+    variants=db.query(models.Variant).filter(models.Variant.product_id==product.id,func.upper(models.Variant.size)==size.upper()).populate_existing().all()
+    if len(variants)!=1 or variants[0].is_deleted:
+        raise HTTPException(409, 'Master SKU exists, but size is missing or deleted; check inventory')
+    return product, variants[0]
+
+
+def _manual_row(db, item):
+    sku=_return_text(item.sku); size=_return_text(item.size)
+    product,v=_manual_variant(db,sku,size)
+    if v is None:
+        if not item.record_only or item.variant_id is not None:
+            raise HTTPException(409, 'SKU not found. Explicitly choose record only, or correct SKU.')
+        return (item, None, sku, _return_text(item.name) if item.name.strip() else sku, size, None)
+    if item.record_only or item.variant_id!=v.id:
+        raise HTTPException(409, 'Catalog match changed. Check SKU/size again before posting.')
+    if v.last_counted_at is None or item.quantity>v.current_stock:
+        raise HTTPException(409, f'{sku} / {size}: insufficient or uncounted stock')
+    avg=v.cost_record.unit_cost if v.cost_record else product.cost_record.unit_cost if product.cost_record else None
+    return (item,v,product.sku,product.name,v.size,avg)
+
+
+def _manual_rows(db,payload):
+    rows=[]; seen=set()
+    for item in payload.lines:
+        row=_manual_row(db,item)
+        key=(row[2].upper(),row[4].upper())
+        if key in seen:raise HTTPException(422,'Duplicate SKU and size; combine quantities into one item')
+        seen.add(key);rows.append(row)
+    return rows
+
+
+@router.get('/purchase-returns/catalog')
+def return_catalog(sku: str=Query(...,min_length=1,max_length=64),db:Session=Depends(get_db)):
+    products=db.query(models.Product).filter(func.upper(models.Product.sku)==sku.strip().upper()).all()
+    if not products:return {'found':False,'items':[]}
+    if len(products)!=1 or products[0].is_deleted:raise HTTPException(409,'SKU ambiguous or in Trash; check catalog')
+    p=products[0];items=[]
+    for v in p.variants:
+        if v.is_deleted:continue
+        cost=v.cost_record.unit_cost if v.cost_record else p.cost_record.unit_cost if p.cost_record else None
+        items.append(dict(variant_id=v.id,sku=p.sku,name=p.name,size=v.size,stock=v.current_stock if v.last_counted_at is not None else None,unit_cost=float(cost) if cost is not None else None))
+    return {'found':True,'items':items}
 
 
 def _return_text(value):
@@ -1060,7 +1129,7 @@ def return_source(purchase_id: int, db: Session = Depends(get_db)):
 def _serialize_return(b):
     lines = [dict(sku=x.sku, name=x.name, size=x.size, purchase_line_id=x.purchase_line_id,
         quantity=x.quantity, unit_cost=float(x.unit_cost), amount=float(x.unit_cost*x.quantity),
-        inventory_unit_cost=float(x.inventory_unit_cost), balance_after=x.balance_after) for x in b.lines]
+        inventory_unit_cost=float(x.inventory_unit_cost) if x.inventory_unit_cost is not None else None, balance_after=x.balance_after, record_only=x.variant_id is None) for x in b.lines]
     return dict(id=b.id, purchase_id=b.purchase_id, return_no=b.return_no, party_name=b.party_name,
         purchase_no=b.purchase_no, return_date=b.return_date, reason=b.reason, status='POSTED',
         created_at=b.created_at, quantity=sum(x.quantity for x in b.lines),
@@ -1080,12 +1149,29 @@ def _post_supplier_return(payload, db, draft_id=None, revision=None):
         draft = _get_return_draft(db, draft_id, revision)
         payload = SupplierReturnDraft.model_validate_json(draft.payload)
     number = _return_text(payload.return_no).upper()
-    reason = _return_text(payload.reason)
+    reason = _return_text(payload.reason) if payload.reason.strip() else ""
     if len(number) > 120:
         raise HTTPException(422, 'Return number is too long')
-    if len({x.line_id for x in payload.lines}) != len(payload.lines):
+    if payload.purchase_id is not None and len({x.line_id for x in payload.lines}) != len(payload.lines):
         raise HTTPException(422, 'Duplicate purchase line')
     try:
+        if payload.purchase_id is None:
+            if db.query(PurchaseReturn.id).filter_by(return_no=number).first():raise HTTPException(409,'Return invoice already posted')
+            reserved=db.query(PurchaseReturnDraft).filter_by(return_no=number).first()
+            if reserved and (draft is None or reserved.id!=draft.id):raise HTTPException(409,'Return number belongs to a saved draft')
+            rows=_manual_rows(db,payload)
+            batch=PurchaseReturn(purchase_id=None,return_no=number,party_name=_return_text(payload.party_name),purchase_no='',return_date=payload.return_date.isoformat(),reason=reason)
+            db.add(batch);db.flush()
+            for item,v,sku,name,size,avg in rows:
+                if v is not None:
+                    inventory_service.apply_stock_change(db,v,-item.quantity,models.TransactionType.MANUAL_ADJUSTMENT,reference=f'purchase_return:{batch.id}:{number}',created_by='supplier_return',expected_current_stock=v.current_stock)
+                    alert_service.check_variant_alert(db,v)
+                db.add(PurchaseReturnLine(return_id=batch.id,purchase_line_id=None,variant_id=v.id if v is not None else None,sku=sku,name=name,size=size,quantity=item.quantity,unit_cost=item.unit_cost,inventory_unit_cost=avg,balance_after=v.current_stock if v is not None else None))
+            if draft is not None:
+                db.query(PurchaseReturnDocument).filter_by(draft_id=draft.id).update({PurchaseReturnDocument.return_id:batch.id,PurchaseReturnDocument.draft_id:None},synchronize_session=False)
+                db.delete(draft)
+            db.commit()
+            return _serialize_return(db.query(PurchaseReturn).options(selectinload(PurchaseReturn.lines)).filter_by(id=batch.id).one())
         # Same lock order as receipt posting/correction. SQLite serializes writers;
         # the invoice row lock also protects cumulative quantity validation.
         db.execute(update(PurchaseChallan).where(PurchaseChallan.id == payload.purchase_id).values(status=PurchaseChallan.status))
@@ -1161,10 +1247,10 @@ def list_supplier_returns(q: str = Query('', max_length=200), date_filter: Optio
 
 
 def _return_export(records, filename):
-    rows = [['Return No', 'Return Date', 'Supplier', 'Purchase Invoice', 'Master SKU', 'Product', 'Size', 'Returned Qty', 'Purchase Rate INR', 'Return Value INR', 'Inventory Unit Cost INR', 'Stock After Return', 'Reason']]
+    rows = [['Return No', 'Return Date', 'Supplier', 'Purchase Invoice', 'Master SKU', 'Product', 'Size', 'Returned Qty', 'Return Rate INR', 'Return Value INR', 'Inventory Unit Cost INR', 'Stock After Return', 'Reason']]
     for b in records:
         for x in b.lines:
-            rows.append([b.return_no,b.return_date,b.party_name,b.purchase_no,x.sku,x.name,x.size,x.quantity,float(x.unit_cost),float(x.unit_cost*x.quantity),float(x.inventory_unit_cost),x.balance_after,b.reason])
+            rows.append([b.return_no,b.return_date,b.party_name,b.purchase_no,x.sku,x.name,x.size,x.quantity,float(x.unit_cost),float(x.unit_cost*x.quantity),float(x.inventory_unit_cost) if x.inventory_unit_cost is not None else None,x.balance_after,b.reason])
     return StreamingResponse(io.BytesIO(_simple_xlsx(rows)), media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', headers={'Content-Disposition':f'attachment; filename="{filename}"'})
 
 
@@ -1204,9 +1290,20 @@ def _save_return_draft(db, payload, draft_id=None):
         if d is not None and d.purchase_id != payload.purchase_id:
             raise HTTPException(409, "Saved draft is linked to its original purchase. Create a new return for another invoice.")
         number = _return_text(payload.return_no).upper()
-        reason = _return_text(payload.reason)
-        if len(number)>120 or len({x.line_id for x in payload.lines})!=len(payload.lines):
+        reason = _return_text(payload.reason) if payload.reason.strip() else ""
+        if len(number)>120 or (payload.purchase_id is not None and len({x.line_id for x in payload.lines})!=len(payload.lines)):
             raise HTTPException(422, 'Invalid return number or duplicate purchase line')
+        if payload.purchase_id is None:
+            if db.query(PurchaseReturn.id).filter_by(return_no=number).first():raise HTTPException(409,'Return invoice already posted')
+            other=db.query(PurchaseReturnDraft).filter_by(return_no=number).first()
+            if other and (d is None or other.id!=d.id):raise HTTPException(409,'Return invoice number already saved as draft')
+            rows=_manual_rows(db,payload)
+            if d is None:d=PurchaseReturnDraft();db.add(d)
+            d.purchase_id=None;d.return_no=number;d.party_name=_return_text(payload.party_name);d.purchase_no='';d.return_date=payload.return_date.isoformat()
+            d.quantity=sum(x.quantity for x in payload.lines);d.amount=sum((x.quantity*x.unit_cost for x in payload.lines),Decimal('0'))
+            clean=SupplierReturnDraft(party_name=d.party_name,return_no=number,return_date=payload.return_date,reason=reason,lines=[item.model_copy(update=dict(sku=sku,name=name,size=size)) for item,v,sku,name,size,avg in rows])
+            d.payload=clean.model_dump_json();d.revision=uuid.uuid4().hex
+            db.commit();return _draft_dict(d)
         invoice = db.query(PurchaseChallan).options(selectinload(PurchaseChallan.lines)).filter_by(id=payload.purchase_id,status='POSTED').first()
         if not invoice:
             raise HTTPException(404, 'Posted purchase invoice not found')
@@ -1228,7 +1325,7 @@ def _save_return_draft(db, payload, draft_id=None):
         d.return_date=payload.return_date.isoformat();d.quantity=sum(x.quantity for x in payload.lines)
         d.amount=sum((original[x.line_id].unit_cost*x.quantity for x in payload.lines),Decimal('0'))
         clean=SupplierReturnDraft(purchase_id=invoice.id,return_no=number,return_date=payload.return_date,reason=reason,lines=payload.lines)
-        d.payload=clean.model_dump_json();d.revision=uuid.uuid4().hex
+        d.payload=clean.model_dump_json(exclude_defaults=True);d.revision=uuid.uuid4().hex
         db.commit();return _draft_dict(d)
     except Exception:
         db.rollback();raise
@@ -1304,11 +1401,10 @@ def return_periods(report_date: date,db: Session=Depends(get_db)):
 
 @router.get('/purchase-returns/import-template')
 def return_import_template():
-    return StreamingResponse(io.BytesIO(_simple_xlsx([['Master SKU','Size','Return Qty']])),media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',headers={'Content-Disposition':'attachment; filename="MYRAA_Return_Template.xlsx"'})
+    return StreamingResponse(io.BytesIO(_simple_xlsx([['Master SKU','Size','Return Qty','Return Rate','Product Name']])),media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',headers={'Content-Disposition':'attachment; filename="MYRAA_Return_Template.xlsx"'})
 
 
-@router.post('/purchase-returns/import-preview/{purchase_id}')
-async def preview_return_import(purchase_id:int,file:UploadFile=File(...),db:Session=Depends(get_db)):
+async def _read_return_import(file):
     raw=await file.read(MAX_EXCEL_SIZE+1)
     if not raw or len(raw)>MAX_EXCEL_SIZE:raise HTTPException(422,'Excel or CSV must be 1 byte–12 MB')
     # Existing spreadsheet reader; reject oversized expanded XLSX archives first.
@@ -1319,6 +1415,39 @@ async def preview_return_import(purchase_id:int,file:UploadFile=File(...),db:Ses
         except Exception as e:raise HTTPException(422,'Invalid or oversized workbook') from e
     try:df=read_table(raw,file.filename or '')
     except ValueError as e:raise HTTPException(422,str(e)) from e
+    return df
+
+
+@router.post('/purchase-returns/import-preview')
+async def preview_manual_return_import(file:UploadFile=File(...),db:Session=Depends(get_db)):
+    df=await _read_return_import(file)
+    headers={str(x).strip().lower():x for x in df.columns}
+    if not {'master sku','size','return qty','return rate'}<=headers.keys() or len(df)>10000 or df.empty:raise HTTPException(422,'Use Master SKU, Size, Return Qty, Return Rate (1–10000 rows)')
+    lines={}
+    for idx,row in enumerate(df.to_dict('records'),2):
+        sku=clean_code(row[headers['master sku']]);size=clean_code(row[headers['size']]);rate=cost_decimal(row[headers['return rate']])
+        try:
+            q=Decimal(str(row[headers['return qty']]).strip())
+            if not q.is_finite() or q!=q.to_integral_value() or not 1<=q<=1000000 or rate is None:raise ValueError()
+        except (InvalidOperation,ValueError):raise HTTPException(422,f'Row {idx}: invalid quantity or return rate')
+        if not sku or not size or len(sku)>64 or len(size)>20:raise HTTPException(422,f'Row {idx}: invalid SKU/size')
+        p,v=_manual_variant(db,sku,size)
+        key=(sku,size)
+        if key in lines and lines[key]['unit_cost']!=float(rate):raise HTTPException(422,f'Row {idx}: duplicate SKU/size with different rates')
+        qty=lines.get(key,{}).get('quantity',0)+int(q)
+        if qty>1000000 or (v is not None and (v.last_counted_at is None or qty>v.current_stock)):raise HTTPException(409,f'Row {idx}: insufficient or uncounted stock')
+        name=sku
+        if 'product name' in headers:
+            raw_name=row[headers['product name']]
+            if clean_code(raw_name):name=_return_text(str(raw_name))
+            if len(name)>300:raise HTTPException(422,f'Row {idx}: product name too long')
+        lines[key]=dict(variant_id=v.id if v is not None else None,sku=p.sku if p is not None else sku,name=p.name if p is not None else name,size=v.size if v is not None else size,stock=v.current_stock if v is not None else None,quantity=qty,unit_cost=float(rate),record_only=v is None)
+    return {'lines':list(lines.values())}
+
+
+@router.post('/purchase-returns/import-preview/{purchase_id}')
+async def preview_return_import(purchase_id:int,file:UploadFile=File(...),db:Session=Depends(get_db)):
+    df=await _read_return_import(file)
     headers={str(x).strip().lower():x for x in df.columns}
     if not {'master sku','size','return qty'}<=headers.keys() or len(df)>10000 or df.empty:raise HTTPException(422,'Use Master SKU, Size, Return Qty (1–10000 rows)')
     src=return_source(purchase_id,db);available={}

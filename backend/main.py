@@ -22,7 +22,7 @@ from starlette.background import BackgroundTask
 from sqlalchemy import case, func, or_, delete as sa_delete, inspect as sa_inspect, text
 from sqlalchemy.orm import Session, joinedload, selectinload, contains_eager, aliased
 
-from database import Base, engine, get_db, SessionLocal, tenant_scope, tenant_root, tenant_id
+from database import Base, engine, get_db, SessionLocal, tenant_scope, tenant_root, tenant_id, upgrade_return_schema
 import models
 import business_models
 import workspace_models  # Register account table before create_all
@@ -41,6 +41,7 @@ from services import packing_picklist_service
 from packing_sync_api import router as packing_sync_router  # register persistent picklist tables before create_all
 
 Base.metadata.create_all(bind=engine)
+upgrade_return_schema(engine)
 logger = logging.getLogger(__name__)
 ACTIVE_ORDER_STATUSES = (
     models.OrderLineStatus.PENDING,

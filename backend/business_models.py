@@ -109,7 +109,7 @@ class PurchaseReturn(Base):
     """Immutable posted supplier return; original invoice is retained."""
     __tablename__ = 'myraa_purchase_returns'
     id = Column(Integer, primary_key=True)
-    purchase_id = Column(Integer, ForeignKey('myraa_purchase_challans.id'), nullable=False, index=True)
+    purchase_id = Column(Integer, ForeignKey('myraa_purchase_challans.id'), nullable=True, index=True)
     return_no = Column(String(120), nullable=False, unique=True)
     party_name = Column(String(180), nullable=False)
     purchase_no = Column(String(120), nullable=False)
@@ -123,15 +123,15 @@ class PurchaseReturnLine(Base):
     __tablename__ = 'myraa_purchase_return_lines'
     id = Column(Integer, primary_key=True)
     return_id = Column(Integer, ForeignKey('myraa_purchase_returns.id'), nullable=False, index=True)
-    purchase_line_id = Column(Integer, ForeignKey('myraa_purchase_challan_lines.id'), nullable=False, index=True)
-    variant_id = Column(Integer, ForeignKey('variants.id'), nullable=False)
+    purchase_line_id = Column(Integer, ForeignKey('myraa_purchase_challan_lines.id'), nullable=True, index=True)
+    variant_id = Column(Integer, ForeignKey('variants.id'), nullable=True)
     sku = Column(String(64), nullable=False)
     name = Column(String(300), nullable=False)
     size = Column(String(20), nullable=False)
     quantity = Column(Integer, nullable=False)
     unit_cost = Column(Numeric(12, 2), nullable=False)
-    inventory_unit_cost = Column(Numeric(12, 2), nullable=False)
-    balance_after = Column(Integer, nullable=False)
+    inventory_unit_cost = Column(Numeric(12, 2), nullable=True)
+    balance_after = Column(Integer, nullable=True)
     __table_args__ = (UniqueConstraint('return_id', 'purchase_line_id', name='uq_purchase_return_line'),)
 
 
@@ -139,7 +139,7 @@ class PurchaseReturnDraft(Base):
     """Saved intent only. No inventory movement until atomic posting."""
     __tablename__ = 'myraa_purchase_return_drafts'
     id = Column(Integer, primary_key=True)
-    purchase_id = Column(Integer, nullable=False, index=True)
+    purchase_id = Column(Integer, nullable=True, index=True)
     return_no = Column(String(120), nullable=False, unique=True)
     party_name = Column(String(180), nullable=False)
     purchase_no = Column(String(120), nullable=False)
