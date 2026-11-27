@@ -70,11 +70,11 @@ function renderFiles(){
  const data=[...state.attachments.map(x=>({file:null,filename:x.filename,url:x.url,type:x.content_type,id:x.id})),...state.files.map((x,i)=>({file:x.file,filename:x.file.name,url:x.url,type:x.file.type,pending:i}))];
  for(const item of data){
   const div=document.createElement('div');div.className='cs-file-thumb';
-  if(item.type?.startsWith('image/')){const preview=document.createElement('button');preview.type='button';preview.className='cs-file-preview';preview.setAttribute('aria-label','View '+item.filename);const img=document.createElement('img');img.src=item.url;img.alt=item.filename;preview.append(img);preview.onclick=async()=>{try{await window.MYRAAInvoicePreview.open(item.file||item.url,item.filename);}catch(e){msg(e.message,true);}};div.append(preview);}
+  if(item.type?.startsWith('image/')){const preview=document.createElement('button');preview.type='button';preview.className='cs-file-preview';preview.setAttribute('aria-label','View '+item.filename);const img=document.createElement('img');img.src=item.url;img.alt=item.filename;const label=document.createElement('span');label.className='cs-file-preview-name';label.textContent=item.filename;label.title=item.filename;const hint=document.createElement('small');hint.textContent='View image';preview.append(img,label,hint);preview.onclick=async()=>{try{await window.MYRAAInvoicePreview.open(item.file||item.url,item.filename);}catch(e){msg(e.message,true);}};div.append(preview);}
   else {const link=document.createElement('a');link.href=item.url;link.download=item.filename;link.setAttribute('aria-label','Download '+item.filename);const icon=document.createElement('i');icon.className='fa-solid fa-file-pdf';link.append(icon);div.append(link);}
-  const label=document.createElement('small');label.textContent=item.filename;label.title=item.filename;div.append(label);
+  if(!item.type?.startsWith('image/')){const label=document.createElement('small');label.textContent=item.filename;label.title=item.filename;div.append(label);}
   if(editable()&&state.status!=='POSTED'){
-   const close=document.createElement('button');close.type='button';close.textContent='×';close.setAttribute('aria-label','Remove '+item.filename);
+   const close=document.createElement('button');close.type='button';close.className='cs-file-remove';close.textContent='×';close.setAttribute('aria-label','Remove '+item.filename);
    close.addEventListener('click',async()=>{
     try {
      if(item.file){URL.revokeObjectURL(item.url);state.files.splice(item.pending,1);}

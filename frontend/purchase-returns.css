@@ -335,3 +335,36 @@
 #view-returns .invoice-record-actions button:disabled{opacity:.45;cursor:not-allowed}
 #return-studio .ri-document small{display:block;color:var(--muted,#648276)}
 @media(max-width:700px){#return-studio .ri-row-actions{justify-content:flex-end}.myraa-invoice-photo{padding:12px}.myraa-invoice-photo .ri-gallery-main{height:60dvh}}
+
+/* R31 invoice attachments: a readable preview card, not a download link. */
+#return-studio .ri-document,#ri-detail .ri-document-card{display:flex;align-items:center;gap:12px;padding:10px;border:1px solid var(--line,#d5e5dc);border-radius:12px;background:var(--panel,#fff);min-width:0;max-width:100%;flex-wrap:nowrap}
+#ri-detail .ri-detail-docs{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:10px}
+#view-returns .ri-attachment-preview,#view-returns .ri-attachment-pdf{display:flex;align-items:center;gap:12px;flex:1 1 auto;min-width:0;width:100%;padding:0;border:0;box-shadow:none;background:transparent;color:inherit;text-align:left;font:inherit}
+#view-returns .ri-attachment-preview{cursor:zoom-in;border-radius:8px;min-height:0}
+#view-returns .ri-attachment-preview:hover .ri-attachment-info strong{text-decoration:underline;text-decoration-color:currentColor;text-underline-offset:3px}
+#view-returns .ri-attachment-image{display:grid;place-items:center;flex:0 0 108px;width:108px;height:132px;border-radius:8px;background:#eaf1ed;border:1px solid var(--line,#d5e5dc);overflow:hidden}
+#view-returns .ri-attachment-image img{display:block;width:100%;height:100%;object-fit:contain;object-position:center;background:transparent;border:0;border-radius:0}
+#view-returns .ri-attachment-info{min-width:0;display:grid;gap:5px;overflow-wrap:anywhere}
+#view-returns .ri-attachment-info strong{font-size:13px;line-height:1.45;color:var(--ink,#17352b);font-weight:650}
+#view-returns .ri-attachment-info small{color:#087c59;font-size:12px;font-weight:650}
+#view-returns .ri-attachment-remove{flex:none;align-self:center;min-height:36px}
+#view-returns .ri-doc-error{color:#b91c1c;font-size:13px;overflow-wrap:anywhere}
+#view-returns .ri-doc-error:empty{display:none}
+#view-challans .cs-previews{max-width:100%;display:flex;flex-wrap:wrap;overflow:visible;gap:10px}
+#view-challans .cs-file-thumb{width:152px;min-width:0;max-width:100%;padding:9px;gap:5px;box-sizing:border-box}
+#view-challans .cs-file-thumb .cs-file-preview{display:grid;gap:5px;justify-items:center;width:100%;min-width:0;height:auto;padding:0;overflow:hidden}
+#view-challans .cs-file-thumb .cs-file-preview img{width:100%;height:132px;object-fit:contain}
+#view-challans .cs-file-thumb .cs-file-preview-name{font-size:12px;line-height:1.35;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink,#17352b)}
+#view-challans .cs-file-thumb .cs-file-preview small{max-width:100%;font-size:11px;color:#087c59;font-weight:650}
+#view-challans .cs-file-thumb .cs-file-remove{width:24px;height:24px;min-height:0;top:4px;right:4px;padding:0;display:grid;place-items:center;z-index:1}
+.myraa-invoice-photo .myraa-invoice-image-scroll{max-height:68dvh;overflow:auto;margin:12px 0;border-radius:10px;background:#eaf1ed;overscroll-behavior:contain}
+.myraa-invoice-photo .myraa-invoice-image-scroll .ri-gallery-main{margin:0;width:100%;height:68dvh;object-fit:contain}
+.myraa-invoice-photo.is-actual-size .myraa-invoice-image-scroll .ri-gallery-main{width:auto;height:auto;max-width:none;max-height:none;object-fit:initial;border-radius:0}
+.myraa-invoice-photo .ri-gallery-head h3{min-width:0;font-size:clamp(14px,2vw,18px)}
+.myraa-invoice-photo .ri-gallery-head button{flex:none}.myraa-invoice-photo .myraa-invoice-preview-tools{flex-wrap:wrap}
+:root[data-theme=dark] #view-returns .ri-attachment-image,:root[data-theme=dark] .myraa-invoice-photo .myraa-invoice-image-scroll{background:#203c36}
+:root[data-theme=dark] #view-returns .ri-attachment-info small,:root[data-theme=dark] #view-challans .cs-file-thumb .cs-file-preview small{color:#9ae8c4}
+:root[data-theme=dark] #view-challans .cs-file-thumb{background:#16342f;border-color:#36524c}
+:root[data-theme=dark] #view-returns .ri-doc-error{color:#ffaaaa}
+@media(max-width:700px){#return-studio .ri-document,#ri-detail .ri-document-card{flex-wrap:wrap;padding:9px;gap:8px}#view-returns .ri-attachment-image{flex-basis:90px;width:90px;height:112px}#view-returns .ri-attachment-remove{margin-left:auto}#view-challans .cs-file-thumb{width:min(152px,100%)}.myraa-invoice-photo .myraa-invoice-image-scroll,.myraa-invoice-photo .myraa-invoice-image-scroll .ri-gallery-main{max-height:60dvh}.myraa-invoice-photo.is-actual-size .myraa-invoice-image-scroll .ri-gallery-main{max-height:none}}
+#return-studio #ri-documents{max-width:100%;overflow:visible}
