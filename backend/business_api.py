@@ -1006,8 +1006,8 @@ class SupplierReturnDraft(BaseModel):
         if self.purchase_id is not None:
             if not self.reason.strip() or any(x.line_id is None for x in self.lines):
                 raise ValueError('Original purchase lines and reason required')
-        elif not self.party_name.strip() or any(x.line_id is not None or not x.sku.strip() or not x.size.strip() or x.unit_cost is None for x in self.lines):
-            raise ValueError('Supplier, SKU, size, quantity and return rate required')
+        elif not self.party_name.strip() or any(x.line_id is not None or (not x.sku.strip() and (not x.record_only or not x.name.strip())) or not x.size.strip() or x.unit_cost is None for x in self.lines):
+            raise ValueError('Supplier, product name or SKU, size, quantity and return rate required')
         return self
 
 
@@ -1027,7 +1027,7 @@ def _manual_variant(db, sku, size):
 
 
 def _manual_row(db, item):
-    sku=_return_text(item.sku); size=_return_text(item.size)
+    sku=_return_text(item.sku) if item.sku.strip() else ""; size=_return_text(item.size)
     # A deliberately manual line never affects inventory, even if its text
     # happens to match a catalog SKU. Reject inconsistent linked identities.
     if item.record_only:
@@ -1051,7 +1051,7 @@ def _manual_rows(db,payload):
     rows=[]; seen=set()
     for item in payload.lines:
         row=_manual_row(db,item)
-        key=(row[2].upper(),row[4].upper())
+        key=(bool(item.record_only), row[2].upper(), row[3].upper() if not row[2] else "", row[4].upper())
         if key in seen:raise HTTPException(422,'Duplicate SKU and size; combine quantities into one item')
         seen.add(key);rows.append(row)
     return rows

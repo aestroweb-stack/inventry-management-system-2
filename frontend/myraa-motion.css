@@ -1,0 +1,19 @@
+/* R28: small, interaction-led motion for the workspace. No loading overlays. */
+@media (prefers-reduced-motion: no-preference) {
+  #stage :is(button,a.btn-primary,a.btn-secondary,a.cs-secondary), #sidebar .rail-link {
+    transition: background-color 140ms ease-out, border-color 140ms ease-out, color 140ms ease-out, box-shadow 160ms ease-out, transform 130ms cubic-bezier(.2,.8,.2,1);
+  }
+  #stage :is(button,a.btn-primary,a.btn-secondary,a.cs-secondary):not(:disabled):not([aria-disabled="true"]):active {transform:scale(.98)}
+  #stage :is(input,textarea,select){transition:border-color 140ms ease-out,box-shadow 140ms ease-out}
+  #stage :is(input,textarea,select):focus-visible {outline:2px solid #269b80;outline-offset:1px}
+  #stage .ri-stepper button:not(:disabled):active {transform:scale(.90)}
+  #stage .ri-manual-row{animation:myraa-row-in 150ms ease-out both}
+  #stage .ri-detail-gallery .ri-photo[aria-pressed="true"]{transition:box-shadow 160ms ease-out,border-color 160ms ease-out}
+  @keyframes myraa-row-in {from{opacity:.75}to{opacity:1}}
+  @media(hover:hover) and (pointer:fine){
+    #stage :is(.cs-add,.cs-secondary,.cs-push,.btn-primary,.btn-secondary):not(:disabled):not([aria-disabled="true"]):hover{box-shadow:0 2px 7px #087c5918}
+  }
+}
+@media (prefers-reduced-motion: reduce){
+  #stage :is(button,a,input,textarea,select), #sidebar .rail-link, #stage .ri-manual-row {animation:none!important;transition:none!important}
+}

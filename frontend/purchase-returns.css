@@ -282,3 +282,45 @@
 #view-returns .ri-detail-gallery .ri-zoom{display:inline-flex;align-items:center;gap:0;font-size:13px}
 /* Preserve the expanded desktop rail when switching to the invoice detail view. */
 @media(min-width:1024px){body:not(.sidebar-collapsed) #shell:not(.sidebar-collapsed):has(#view-returns.is-active)>#sidebar{width:var(--rail-w);flex:0 0 var(--rail-w);min-width:var(--rail-w)}#shell:has(#view-returns.is-active)>#stage{width:auto;min-width:0;flex:1 1 0}}
+
+/* R28: purchase-style direct entry; never require the catalog picker for manual items. */
+#return-studio .ri-manual-inputs{display:grid;gap:4px;width:100%;min-width:0}
+#return-studio .ri-table .ri-manual-inputs input,#return-studio .ri-table .ri-manual-size{box-sizing:border-box;width:100%;min-width:0;min-height:36px;height:36px;padding:6px 9px;border:1px solid var(--line,#d5e4db);border-radius:7px;background:var(--panel,#fff);color:var(--ri-heading);font:inherit;box-shadow:none}
+#return-studio .ri-table .ri-manual-inputs input:first-child{font-weight:650}
+#return-studio .ri-table .ri-manual-inputs input:last-child{min-height:30px;height:30px;font-size:11px}
+#return-studio .ri-manual-inputs input:focus,#return-studio .ri-manual-size:focus{outline:2px solid #2baf88;outline-offset:1px}
+#return-studio .ri-table .ri-manual-size{text-align:center;padding:5px}
+#return-studio .ri-manual-picker{border:1px solid var(--line,#d7e3dc);border-radius:10px;padding:12px;background:var(--panel,#fff)}
+#return-studio .ri-search-layout{grid-template-columns:minmax(0,1fr);gap:8px}
+#return-studio .ri-suggestions{position:static;inset:auto;max-height:220px;width:100%;margin:5px 0 0;box-shadow:none}
+#return-studio .ri-size-options{display:flex;flex-wrap:wrap;gap:8px;width:100%}
+#return-studio .ri-size-options button{display:grid;justify-items:start;gap:3px;padding:8px 12px;min-height:44px}
+#return-studio .ri-size-options small{font-size:11px;color:var(--ri-muted)}
+#return-studio .ri-extras{border:0;border-top:1px solid var(--line,#d7e3dc);border-radius:0;padding:16px 0 0;margin:16px 0 0}
+#return-studio .ri-extras .ri-reason{display:grid;gap:6px;margin:0;font-size:12px;font-weight:600}
+#return-studio #ri-reason{box-sizing:border-box;width:100%;min-height:62px;height:62px;max-height:180px;resize:vertical}
+#return-studio .ri-attachment-area{margin:12px 0 0}
+#return-studio .ri-attachment-area .cs-upload-area{display:flex;flex-wrap:wrap;align-items:center;gap:12px;width:100%;min-width:0}
+#return-studio #ri-drop{box-sizing:border-box;flex:0 0 auto;width:174px;min-width:0;max-width:100%;min-height:104px;height:auto;padding:12px;gap:6px}
+#return-studio #ri-drop i{font-size:25px}
+#return-studio #ri-documents{min-width:0;flex:1 1 150px;overflow-wrap:anywhere}
+#return-studio .ri-bottom{display:flex;flex-direction:row;align-items:center;justify-content:flex-end;margin:12px 0 0}
+#return-studio .ri-bottom .cs-actions{display:flex;flex-direction:row;align-items:center;justify-content:flex-end;gap:8px;width:auto;max-width:100%;flex:0 1 auto}
+#return-studio .ri-bottom .cs-actions>button{box-sizing:border-box;flex:0 0 auto!important;width:auto;min-width:0;min-height:44px!important;height:auto!important;max-height:none;aspect-ratio:auto;display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:10px 14px;white-space:normal;line-height:1.35}
+#return-studio .ri-bottom .cs-actions>button span{display:inline;text-align:center}
+#return-studio .ri-table td{border-right:1px solid var(--line,#e0ebe5)}
+#return-studio .ri-table td:last-child{border-right:0}
+@media(max-width:700px){
+ #return-studio .ri-table .ri-manual-inputs input,#return-studio .ri-table .ri-manual-size{height:42px;min-height:42px;font-size:16px}
+ #return-studio .ri-table .ri-manual-inputs input:last-child{font-size:14px;min-height:40px;height:40px}
+ #return-studio .ri-table td{border-right:0}
+ #return-studio .ri-item-actions{width:100%;justify-content:flex-end;gap:6px}
+ #return-studio .ri-item-actions button{padding:7px 9px;min-height:42px;font-size:12px;flex:0 1 auto}
+ #return-studio .ri-bottom{display:block}
+ #return-studio .ri-bottom .cs-actions{display:grid;grid-template-columns:1fr;gap:8px;width:100%;max-width:100%}
+ #return-studio .ri-bottom .cs-actions>button{width:100%!important;min-height:46px!important;max-height:72px;flex:none!important;padding:11px 8px;font-size:13px}
+ #return-studio #ri-drop{width:100%;min-height:94px;max-height:none;flex:none;padding:10px}
+ #return-studio #ri-documents{flex:1 1 100%}
+ #return-studio #ri-reason{font-size:16px}
+}
+#return-studio .ri-table .ri-manual-inputs input{text-align:left}
