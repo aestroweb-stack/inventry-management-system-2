@@ -55,7 +55,7 @@ window.fetch = (input, init) => {
     const url = new URL(typeof input === "string" ? input : input.url, window.location.href);
     const method = String(init?.method || (typeof input !== "string" ? input.method : "GET") || "GET").toUpperCase();
     const isCrud = /^(POST|PUT|PATCH|DELETE)$/.test(method)
-      && /^\/api\/(?:products|variants|inventory|orders|purchase-challans|challans|bulk|reorder|alerts|costing)\b/.test(url.pathname)
+      && /^\/api\/(?:products|variants|inventory|orders|purchase-challans|purchase-returns|challans|bulk|reorder|alerts|costing)\b/.test(url.pathname)
       && !/\/(?:visual-match|search|preview|match|lookup|export|status|download|scan)(?:\/|$)/.test(url.pathname);
     if (response.ok && isCrud) window.myraaSound?.success?.();
     return response;
@@ -2215,7 +2215,7 @@ async function loadHistory(reset) {
         <td><span class="size-chip">${esc(t.size)}</span></td>
         <td class="num" style="color:${t.change_qty < 0 ? "var(--out)" : "var(--ok)"}">${t.change_qty > 0 ? "+" : ""}${t.change_qty}</td>
         <td class="num">${t.balance_after}</td>
-        <td class="hide-sm">${esc(t.transaction_type.replace(/_/g, " "))}</td>
+        <td class="hide-sm">${esc((t.created_by === "supplier_return" ? "PURCHASE RETURN" : t.transaction_type.replace(/_/g, " ")))}</td>
         <td class="hide-sm hint">${esc(t.reference || "")}</td>
       </tr>`).join("");
     body.innerHTML = html || `<tr><td colspan="8" class="empty">No history yet.</td></tr>`;

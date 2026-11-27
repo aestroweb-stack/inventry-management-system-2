@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from database import get_db, tenant_root
 import models
-from business_models import ProductCost, VariantCost, MarketplaceSkuAlias, ProductMarketplaceAlias, PurchaseChallan, PurchaseChallanLine, PurchaseChallanAttachment
+from business_models import ProductCost, VariantCost, MarketplaceSkuAlias, ProductMarketplaceAlias, PurchaseChallan, PurchaseChallanLine, PurchaseChallanAttachment, PurchaseReturn, PurchaseReturnLine
 from services import excel_service, inventory_service, alert_service
 from services.table_reader import read_table, clean_code, to_int
 from services.catalog_identity import duplicate_design, duplicate_message, canonical_conflict, lock_catalog
@@ -885,10 +885,13 @@ def create_manual_challan(payload: ChallanDraft, db: Session=Depends(get_db)):
 
 @router.put('/purchase-challans/{batch_id}/manual')
 def edit_manual_challan(batch_id:int,payload:ChallanDraft,db:Session=Depends(get_db)):
+    lock_catalog(db)
     db.execute(update(PurchaseChallan).where(PurchaseChallan.id == batch_id).values(status=PurchaseChallan.status))
     batch=db.query(PurchaseChallan).filter_by(id=batch_id).populate_existing().with_for_update().first()
     if batch is None:raise HTTPException(404,'Invoice not found')
     if batch.status == 'POSTED':
+        if db.query(PurchaseReturn.id).filter_by(purchase_id=batch_id).first():
+            raise HTTPException(409, 'A supplier return exists for this invoice. Original purchase quantities are locked for audit.')
         # Reconcile quantities, not the original stock push. Other receipts and
         # marketplace deductions must never be reversed as part of this edit.
         lines = _draft_lines(db, payload)
@@ -974,3 +977,196 @@ def edit_manual_challan(batch_id:int,payload:ChallanDraft,db:Session=Depends(get
     for line in lines:db.add(PurchaseChallanLine(challan_id=batch.id,**line))
     db.commit()
     return serialize_challan(db.query(PurchaseChallan).options(selectinload(PurchaseChallan.lines)).filter_by(id=batch.id).one())
+
+
+# Supplier returns: financially separate from receipts, atomic outbound stock.
+class SupplierReturnItem(BaseModel):
+    line_id: int = Field(gt=0, strict=True)
+    quantity: int = Field(gt=0, le=1000000, strict=True)
+
+
+class SupplierReturnDraft(BaseModel):
+    purchase_id: int = Field(gt=0, strict=True)
+    return_no: str = Field(min_length=1, max_length=120)
+    return_date: date
+    reason: str = Field(min_length=1, max_length=500)
+    lines: list[SupplierReturnItem] = Field(min_length=1, max_length=10000)
+
+
+def _return_text(value):
+    value = value.strip()
+    if not value or any(ord(c) < 32 for c in value):
+        raise HTTPException(422, 'Enter non-empty printable return number and reason.')
+    return value
+
+
+def _returned_quantities(db, purchase_id):
+    return dict(db.query(PurchaseReturnLine.purchase_line_id, func.sum(PurchaseReturnLine.quantity))
+        .join(PurchaseReturn, PurchaseReturn.id == PurchaseReturnLine.return_id)
+        .filter(PurchaseReturn.purchase_id == purchase_id)
+        .group_by(PurchaseReturnLine.purchase_line_id).all())
+
+
+def _return_variant(db, invoice, line):
+    # Never deduct a new product that happens to reuse an old SKU. Require the
+    # original receipt ledger entry as well as the current active SKU and size.
+    return db.query(models.Variant).join(models.Product).filter(
+        models.Product.sku == line.sku, models.Product.is_deleted.is_(False),
+        models.Variant.size == line.size, models.Variant.is_deleted.is_(False),
+        models.Variant.transactions.any((models.InventoryTransaction.reference ==
+            f'purchase_challan:{invoice.id}:{invoice.challan_no}') &
+            (models.InventoryTransaction.transaction_type == models.TransactionType.RESTOCK))
+    ).populate_existing().first()
+
+
+def _return_availability(db, invoice):
+    returned = _returned_quantities(db, invoice.id)
+    rows = []
+    for line in invoice.lines:
+        v = _return_variant(db, invoice, line)
+        prior = int(returned.get(line.id, 0))
+        stock = max(0, int(v.current_stock)) if v and v.last_counted_at is not None else 0
+        cost = (v.cost_record.unit_cost if v.cost_record else v.product.cost_record.unit_cost if v.product.cost_record else None) if v else None
+        available = min(max(0, line.qty_received - prior), stock) if line.unit_cost is not None and cost is not None else 0
+        rows.append(dict(line_id=line.id, sku=line.sku, name=line.name, size=line.size,
+            received=line.qty_received, returned=prior, stock=stock, available=available,
+            unit_cost=float(line.unit_cost) if line.unit_cost is not None else None,
+            note='' if v and v.last_counted_at is not None and cost is not None and line.unit_cost is not None else 'Original active receipt or costing unavailable; review inventory.'))
+    return rows
+
+
+@router.get('/purchase-returns/sources')
+def return_sources(q: str = Query('', max_length=200), offset: int = Query(0, ge=0), db: Session = Depends(get_db)):
+    query = db.query(PurchaseChallan).filter_by(status='POSTED')
+    if q.strip():
+        term = '%' + q.strip() + '%'
+        query = query.filter(or_(PurchaseChallan.party_name.ilike(term), PurchaseChallan.challan_no.ilike(term), PurchaseChallan.invoice_no.ilike(term), PurchaseChallan.lines.any(or_(PurchaseChallanLine.sku.ilike(term), PurchaseChallanLine.name.ilike(term)))))
+    total = query.count()
+    items = query.order_by(PurchaseChallan.id.desc()).offset(offset).limit(20).all()
+    return {'total':total, 'items':[dict(id=b.id, party_name=b.party_name, purchase_no=b.challan_no, purchase_date=b.order_date) for b in items]}
+
+
+@router.get('/purchase-returns/sources/{purchase_id}')
+def return_source(purchase_id: int, db: Session = Depends(get_db)):
+    invoice = db.query(PurchaseChallan).options(selectinload(PurchaseChallan.lines)).filter_by(id=purchase_id, status='POSTED').first()
+    if not invoice:
+        raise HTTPException(404, 'Posted purchase invoice not found')
+    return dict(id=invoice.id, party_name=invoice.party_name, purchase_no=invoice.challan_no,
+        purchase_date=invoice.order_date, lines=_return_availability(db, invoice))
+
+
+def _serialize_return(b):
+    lines = [dict(sku=x.sku, name=x.name, size=x.size, purchase_line_id=x.purchase_line_id,
+        quantity=x.quantity, unit_cost=float(x.unit_cost), amount=float(x.unit_cost*x.quantity),
+        inventory_unit_cost=float(x.inventory_unit_cost), balance_after=x.balance_after) for x in b.lines]
+    return dict(id=b.id, purchase_id=b.purchase_id, return_no=b.return_no, party_name=b.party_name,
+        purchase_no=b.purchase_no, return_date=b.return_date, reason=b.reason, status='POSTED',
+        created_at=b.created_at, quantity=sum(x.quantity for x in b.lines),
+        amount=float(sum((x.unit_cost*x.quantity for x in b.lines), Decimal('0'))), lines=lines)
+
+
+@router.post('/purchase-returns', status_code=201)
+def post_supplier_return(payload: SupplierReturnDraft, db: Session = Depends(get_db)):
+    number = _return_text(payload.return_no).upper()
+    reason = _return_text(payload.reason)
+    if len(number) > 120:
+        raise HTTPException(422, 'Return number is too long')
+    if len({x.line_id for x in payload.lines}) != len(payload.lines):
+        raise HTTPException(422, 'Duplicate purchase line')
+    try:
+        # Same lock order as receipt posting/correction. SQLite serializes writers;
+        # the invoice row lock also protects cumulative quantity validation.
+        lock_catalog(db)
+        db.execute(update(PurchaseChallan).where(PurchaseChallan.id == payload.purchase_id).values(status=PurchaseChallan.status))
+        invoice = db.query(PurchaseChallan).filter_by(id=payload.purchase_id, status='POSTED').populate_existing().with_for_update().first()
+        if not invoice:
+            raise HTTPException(404, 'Posted purchase invoice not found')
+        if payload.return_date.isoformat() < invoice.order_date:
+            raise HTTPException(422, 'Return date cannot precede purchase date')
+        if db.query(PurchaseReturn.id).filter_by(return_no=number).first():
+            raise HTTPException(409, 'Return invoice number already posted; check saved records before retrying.')
+        availability = {x['line_id']:x for x in _return_availability(db, invoice)}
+        original = {x.id:x for x in invoice.lines}
+        for item in payload.lines:
+            row = availability.get(item.line_id)
+            if row is None or item.quantity > row['available']:
+                raise HTTPException(409, f'Return exceeds available stock or original purchase balance (line {item.line_id}). Refresh invoice.')
+        batch = PurchaseReturn(purchase_id=invoice.id, return_no=number, party_name=invoice.party_name,
+            purchase_no=invoice.challan_no, return_date=payload.return_date.isoformat(), reason=reason)
+        db.add(batch); db.flush()
+        for item in sorted(payload.lines, key=lambda x:x.line_id):
+            line = original[item.line_id]
+            v = _return_variant(db, invoice, line)
+            if v is None:
+                raise HTTPException(409, 'Original active stock size not found')
+            avg = v.cost_record.unit_cost if v.cost_record else v.product.cost_record.unit_cost if v.product.cost_record else None
+            if avg is None or v.last_counted_at is None:
+                raise HTTPException(409, 'Current stock costing unavailable')
+            # Outbound inventory uses current moving average. Supplier credit is
+            # the original receipt price, recorded separately; no refund claim.
+            inventory_service.apply_stock_change(db, v, -item.quantity,
+                transaction_type=models.TransactionType.MANUAL_ADJUSTMENT,
+                reference=f'purchase_return:{batch.id}:{number}', created_by='supplier_return',
+                expected_current_stock=v.current_stock)
+            alert_service.check_variant_alert(db, v)
+            db.add(PurchaseReturnLine(return_id=batch.id, purchase_line_id=line.id, variant_id=v.id,
+                sku=line.sku, name=line.name, size=line.size, quantity=item.quantity, unit_cost=line.unit_cost,
+                inventory_unit_cost=avg, balance_after=v.current_stock))
+        db.commit()
+    except (inventory_service.InsufficientStockError, inventory_service.StaleStockError) as exc:
+        db.rollback()
+        raise HTTPException(409, str(exc)) from exc
+    except Exception:
+        db.rollback()
+        raise
+    return _serialize_return(db.query(PurchaseReturn).options(selectinload(PurchaseReturn.lines)).filter_by(id=batch.id).one())
+
+
+def _return_query(db, q, date_filter):
+    query = db.query(PurchaseReturn)
+    if q.strip():
+        term = '%' + q.strip() + '%'
+        query = query.filter(or_(PurchaseReturn.return_no.ilike(term), PurchaseReturn.purchase_no.ilike(term), PurchaseReturn.party_name.ilike(term), PurchaseReturn.lines.any(or_(PurchaseReturnLine.sku.ilike(term), PurchaseReturnLine.name.ilike(term)))))
+    if date_filter:
+        query = query.filter(PurchaseReturn.return_date == date_filter.isoformat())
+    return query
+
+
+@router.get('/purchase-returns')
+def list_supplier_returns(q: str = Query('', max_length=200), date_filter: Optional[date] = None,
+    offset: int = Query(0, ge=0), db: Session = Depends(get_db)):
+    query = _return_query(db,q,date_filter)
+    total = query.count()
+    ids = query.with_entities(PurchaseReturn.id).subquery()
+    qty, amount = db.query(func.coalesce(func.sum(PurchaseReturnLine.quantity),0), func.coalesce(func.sum(PurchaseReturnLine.quantity*PurchaseReturnLine.unit_cost),0)).filter(PurchaseReturnLine.return_id.in_(db.query(ids.c.id))).one()
+    records = query.options(selectinload(PurchaseReturn.lines)).order_by(PurchaseReturn.id.desc()).offset(offset).limit(6).all()
+    return dict(total=total, quantity=int(qty), amount=float(amount), items=[_serialize_return(b) for b in records])
+
+
+def _return_export(records, filename):
+    rows = [['Return No', 'Return Date', 'Supplier', 'Purchase Invoice', 'Master SKU', 'Product', 'Size', 'Returned Qty', 'Purchase Rate INR', 'Return Value INR', 'Inventory Unit Cost INR', 'Stock After Return', 'Reason']]
+    for b in records:
+        for x in b.lines:
+            rows.append([b.return_no,b.return_date,b.party_name,b.purchase_no,x.sku,x.name,x.size,x.quantity,float(x.unit_cost),float(x.unit_cost*x.quantity),float(x.inventory_unit_cost),x.balance_after,b.reason])
+    return StreamingResponse(io.BytesIO(_simple_xlsx(rows)), media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', headers={'Content-Disposition':f'attachment; filename="{filename}"'})
+
+
+@router.get('/purchase-returns/export-records')
+def export_supplier_returns(q: str = Query('', max_length=200), date_filter: Optional[date] = None, db: Session = Depends(get_db)):
+    return _return_export(_return_query(db,q,date_filter).options(selectinload(PurchaseReturn.lines)).order_by(PurchaseReturn.id.desc()).all(), 'MYRAA_Purchase_Returns.xlsx')
+
+
+@router.get('/purchase-returns/{return_id}')
+def get_supplier_return(return_id: int, db: Session = Depends(get_db)):
+    b = db.query(PurchaseReturn).options(selectinload(PurchaseReturn.lines)).filter_by(id=return_id).first()
+    if not b:
+        raise HTTPException(404, 'Return invoice not found')
+    return _serialize_return(b)
+
+
+@router.get('/purchase-returns/{return_id}/export')
+def export_supplier_return(return_id: int, db: Session = Depends(get_db)):
+    b = db.query(PurchaseReturn).options(selectinload(PurchaseReturn.lines)).filter_by(id=return_id).first()
+    if not b:
+        raise HTTPException(404, 'Return invoice not found')
+    return _return_export([b], f'MYRAA_Return_{b.id}.xlsx')

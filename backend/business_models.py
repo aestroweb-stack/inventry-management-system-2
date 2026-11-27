@@ -103,3 +103,33 @@ class HiddenTrashProduct(Base):
     __tablename__ = 'myraa_hidden_trash_products'
     product_id = Column(Integer, ForeignKey('products.id'), primary_key=True)
     hidden_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class PurchaseReturn(Base):
+    """Immutable posted supplier return; original invoice is retained."""
+    __tablename__ = 'myraa_purchase_returns'
+    id = Column(Integer, primary_key=True)
+    purchase_id = Column(Integer, ForeignKey('myraa_purchase_challans.id'), nullable=False, index=True)
+    return_no = Column(String(120), nullable=False, unique=True)
+    party_name = Column(String(180), nullable=False)
+    purchase_no = Column(String(120), nullable=False)
+    return_date = Column(String(10), nullable=False, index=True)
+    reason = Column(String(500), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    lines = relationship('PurchaseReturnLine', order_by='PurchaseReturnLine.id')
+
+
+class PurchaseReturnLine(Base):
+    __tablename__ = 'myraa_purchase_return_lines'
+    id = Column(Integer, primary_key=True)
+    return_id = Column(Integer, ForeignKey('myraa_purchase_returns.id'), nullable=False, index=True)
+    purchase_line_id = Column(Integer, ForeignKey('myraa_purchase_challan_lines.id'), nullable=False, index=True)
+    variant_id = Column(Integer, ForeignKey('variants.id'), nullable=False)
+    sku = Column(String(64), nullable=False)
+    name = Column(String(300), nullable=False)
+    size = Column(String(20), nullable=False)
+    quantity = Column(Integer, nullable=False)
+    unit_cost = Column(Numeric(12, 2), nullable=False)
+    inventory_unit_cost = Column(Numeric(12, 2), nullable=False)
+    balance_after = Column(Integer, nullable=False)
+    __table_args__ = (UniqueConstraint('return_id', 'purchase_line_id', name='uq_purchase_return_line'),)
