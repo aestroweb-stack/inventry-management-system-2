@@ -49,49 +49,49 @@
 .myraa-confirm--danger .myraa-confirm-accept:hover{background:#962232}
 
 /* R5: purchase reports — scoped, theme-aware and responsive to actual available width. */
-#myraa-challan-studio .cs-period-head {gap:10px 14px; margin:22px 0 12px;}
-#myraa-challan-studio .cs-period-head>strong {font-size:16px; font-weight:800;}
-#myraa-challan-studio .cs-period-head label {flex-wrap:wrap; min-width:0;}
-#myraa-challan-studio .cs-period-head input {min-width:0; max-width:100%; color-scheme:light;}
-#myraa-challan-studio .cs-stats {grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr)); gap:12px; margin:12px 0 22px;}
-#myraa-challan-studio .cs-stat {min-width:0; height:auto; min-height:88px; padding:14px; border:1px solid transparent;}
-#myraa-challan-studio .cs-stat strong {white-space:normal; overflow-wrap:anywhere; font-size:clamp(19px,2vw,24px); line-height:1.2;}
-#myraa-challan-studio .myraa-period-section {margin:0 0 24px; min-width:0;}
-#myraa-challan-studio .myraa-period-section-title {display:flex; align-items:baseline; flex-wrap:wrap; gap:6px 12px; margin:0 0 12px;}
-#myraa-challan-studio .myraa-period-section-title h3 {font-size:16px; font-weight:800; margin:0; color:inherit;}
-#myraa-challan-studio .myraa-period-section-title>span {font-size:12px; color:#587167;}
-#myraa-challan-studio .myraa-period-summary {display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,245px),1fr)); gap:12px; align-items:stretch; margin:0;}
-#myraa-challan-studio .myraa-period-tile {--period-bg:#e6f6e9; --period-border:#c9e5d1; --period-accent:#08764b; --period-text:#163b2a; --period-muted:#466c58; --period-icon:#cfeedd; --period-rule:#bfdcc9; background:var(--period-bg); color:var(--period-text); border:1px solid var(--period-border); border-radius:15px; box-sizing:border-box; padding:16px; display:flex; flex-direction:column; gap:15px; min-width:0; margin:0;}
-#myraa-challan-studio .myraa-period-month {--period-bg:#e8f4ff; --period-border:#c8deef; --period-accent:#126ba8; --period-text:#173b56; --period-muted:#496b83; --period-icon:#d3e9fa; --period-rule:#bfd7e9;}
-#myraa-challan-studio .myraa-period-all {--period-bg:#f4eafb; --period-border:#e1d1f2; --period-accent:#7042a8; --period-text:#402b59; --period-muted:#6d557f; --period-icon:#e8d9f8; --period-rule:#dac7eb;}
-#myraa-challan-studio .myraa-period-card-head {display:flex; align-items:center; gap:9px; flex-wrap:wrap; min-width:0; padding:0; margin:0; border:0; background:transparent;}
-#myraa-challan-studio .myraa-period-icon {display:grid; place-items:center; width:38px; height:38px; border-radius:10px; flex:none; color:var(--period-accent); background:var(--period-icon); font-size:17px;}
-#myraa-challan-studio .myraa-period-heading {flex:1 1 90px; min-width:0;}
-#myraa-challan-studio .myraa-period-heading h3 {margin:0 0 3px; color:var(--period-text); font-size:14px; line-height:1.25; font-weight:800;}
-#myraa-challan-studio .myraa-period-tile small {display:block; color:var(--period-muted); opacity:1; font-size:12px; line-height:1.4; overflow-wrap:anywhere;}
-#myraa-challan-studio .myraa-period-count {background:var(--period-icon); color:var(--period-accent); padding:4px 8px; border-radius:999px; font-size:11px; font-weight:750; line-height:1.4; max-width:100%; overflow-wrap:anywhere;}
-#myraa-challan-studio .myraa-period-metrics {display:grid; grid-template-columns:minmax(0,0.8fr) minmax(0,1.2fr); gap:8px; align-items:start;}
-#myraa-challan-studio .myraa-period-metrics>div {min-width:0;}
-#myraa-challan-studio .myraa-period-metrics strong {display:block; color:var(--period-text); font-size:clamp(17px,1.6vw,23px); line-height:1.3; font-weight:850; margin-top:4px; font-variant-numeric:tabular-nums; overflow-wrap:anywhere;}
-#myraa-challan-studio .myraa-period-details {margin:0; padding:12px 0 0; border-top:1px solid var(--period-rule); display:grid; gap:6px; margin-top:auto;}
-#myraa-challan-studio .myraa-period-details>div {display:flex; justify-content:space-between; align-items:baseline; gap:4px 10px; flex-wrap:wrap; min-width:0; font-size:12px; line-height:1.45;}
-#myraa-challan-studio .myraa-period-details dt {color:var(--period-muted);}
-#myraa-challan-studio .myraa-period-details dd {margin:0; font-weight:750; color:var(--period-text); overflow-wrap:anywhere; max-width:100%; font-variant-numeric:tabular-nums;}
-#myraa-challan-studio .myraa-period-unpriced {margin:0; color:var(--period-accent); font-size:12px; font-weight:650; overflow-wrap:anywhere;}
-:root[data-theme="dark"] #myraa-challan-studio .cs-period-head input {color-scheme:dark;}
-:root[data-theme="dark"] #myraa-challan-studio .myraa-period-section-title>span {color:#a9c9bc;}
-:root[data-theme="dark"] #myraa-challan-studio .cs-ordered {background:#194638; border-color:#2c6451;}
-:root[data-theme="dark"] #myraa-challan-studio .cs-received {background:#193c51; border-color:#2b566c;}
-:root[data-theme="dark"] #myraa-challan-studio .cs-pending {background:#443521; border-color:#6b5130;}
-:root[data-theme="dark"] #myraa-challan-studio .cs-value {background:#392c4b; border-color:#58416d;}
-:root[data-theme="dark"] #myraa-challan-studio .cs-ordered i {color:#73e1b0;}
-:root[data-theme="dark"] #myraa-challan-studio .cs-received i {color:#8dcfff;}
-:root[data-theme="dark"] #myraa-challan-studio .cs-pending i {color:#ffc77e;}
-:root[data-theme="dark"] #myraa-challan-studio .cs-value i {color:#d4b4ff;}
-:root[data-theme="dark"] #myraa-challan-studio .myraa-period-day {--period-bg:#194638; --period-border:#2c6451; --period-accent:#9beac3; --period-text:#edfdf4; --period-muted:#b9d8c9; --period-icon:#235a46; --period-rule:#386b56;}
-:root[data-theme="dark"] #myraa-challan-studio .myraa-period-month {--period-bg:#193c51; --period-border:#2b566c; --period-accent:#a5d6ff; --period-text:#edf7ff; --period-muted:#b9d5e9; --period-icon:#234f68; --period-rule:#3b6178;}
-:root[data-theme="dark"] #myraa-challan-studio .myraa-period-all {--period-bg:#392c4b; --period-border:#58416d; --period-accent:#dec2ff; --period-text:#fbf3ff; --period-muted:#d6c3e9; --period-icon:#513c69; --period-rule:#634f7a;}
-@media(max-width:480px){#myraa-challan-studio .cs-period-head label{margin-left:0;} #myraa-challan-studio .myraa-period-tile{padding:14px;} #myraa-challan-studio .myraa-period-section{margin-bottom:20px;}}
+:is(#myraa-challan-studio,#return-studio) .cs-period-head {gap:10px 14px; margin:22px 0 12px;}
+:is(#myraa-challan-studio,#return-studio) .cs-period-head>strong {font-size:16px; font-weight:800;}
+:is(#myraa-challan-studio,#return-studio) .cs-period-head label {flex-wrap:wrap; min-width:0;}
+:is(#myraa-challan-studio,#return-studio) .cs-period-head input {min-width:0; max-width:100%; color-scheme:light;}
+:is(#myraa-challan-studio,#return-studio) .cs-stats {grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr)); gap:12px; margin:12px 0 22px;}
+:is(#myraa-challan-studio,#return-studio) .cs-stat {min-width:0; height:auto; min-height:88px; padding:14px; border:1px solid transparent;}
+:is(#myraa-challan-studio,#return-studio) .cs-stat strong {white-space:normal; overflow-wrap:anywhere; font-size:clamp(19px,2vw,24px); line-height:1.2;}
+:is(#myraa-challan-studio,#return-studio) .myraa-period-section {margin:0 0 24px; min-width:0;}
+:is(#myraa-challan-studio,#return-studio) .myraa-period-section-title {display:flex; align-items:baseline; flex-wrap:wrap; gap:6px 12px; margin:0 0 12px;}
+:is(#myraa-challan-studio,#return-studio) .myraa-period-section-title h3 {font-size:16px; font-weight:800; margin:0; color:inherit;}
+:is(#myraa-challan-studio,#return-studio) .myraa-period-section-title>span {font-size:12px; color:#587167;}
+:is(#myraa-challan-studio,#return-studio) .myraa-period-summary {display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,245px),1fr)); gap:12px; align-items:stretch; margin:0;}
+:is(#myraa-challan-studio,#return-studio) .myraa-period-tile {--period-bg:#e6f6e9; --period-border:#c9e5d1; --period-accent:#08764b; --period-text:#163b2a; --period-muted:#466c58; --period-icon:#cfeedd; --period-rule:#bfdcc9; background:var(--period-bg); color:var(--period-text); border:1px solid var(--period-border); border-radius:15px; box-sizing:border-box; padding:16px; display:flex; flex-direction:column; gap:15px; min-width:0; margin:0;}
+:is(#myraa-challan-studio,#return-studio) .myraa-period-month {--period-bg:#e8f4ff; --period-border:#c8deef; --period-accent:#126ba8; --period-text:#173b56; --period-muted:#496b83; --period-icon:#d3e9fa; --period-rule:#bfd7e9;}
+:is(#myraa-challan-studio,#return-studio) .myraa-period-all {--period-bg:#f4eafb; --period-border:#e1d1f2; --period-accent:#7042a8; --period-text:#402b59; --period-muted:#6d557f; --period-icon:#e8d9f8; --period-rule:#dac7eb;}
+:is(#myraa-challan-studio,#return-studio) .myraa-period-card-head {display:flex; align-items:center; gap:9px; flex-wrap:wrap; min-width:0; padding:0; margin:0; border:0; background:transparent;}
+:is(#myraa-challan-studio,#return-studio) .myraa-period-icon {display:grid; place-items:center; width:38px; height:38px; border-radius:10px; flex:none; color:var(--period-accent); background:var(--period-icon); font-size:17px;}
+:is(#myraa-challan-studio,#return-studio) .myraa-period-heading {flex:1 1 90px; min-width:0;}
+:is(#myraa-challan-studio,#return-studio) .myraa-period-heading h3 {margin:0 0 3px; color:var(--period-text); font-size:14px; line-height:1.25; font-weight:800;}
+:is(#myraa-challan-studio,#return-studio) .myraa-period-tile small {display:block; color:var(--period-muted); opacity:1; font-size:12px; line-height:1.4; overflow-wrap:anywhere;}
+:is(#myraa-challan-studio,#return-studio) .myraa-period-count {background:var(--period-icon); color:var(--period-accent); padding:4px 8px; border-radius:999px; font-size:11px; font-weight:750; line-height:1.4; max-width:100%; overflow-wrap:anywhere;}
+:is(#myraa-challan-studio,#return-studio) .myraa-period-metrics {display:grid; grid-template-columns:minmax(0,0.8fr) minmax(0,1.2fr); gap:8px; align-items:start;}
+:is(#myraa-challan-studio,#return-studio) .myraa-period-metrics>div {min-width:0;}
+:is(#myraa-challan-studio,#return-studio) .myraa-period-metrics strong {display:block; color:var(--period-text); font-size:clamp(17px,1.6vw,23px); line-height:1.3; font-weight:850; margin-top:4px; font-variant-numeric:tabular-nums; overflow-wrap:anywhere;}
+:is(#myraa-challan-studio,#return-studio) .myraa-period-details {margin:0; padding:12px 0 0; border-top:1px solid var(--period-rule); display:grid; gap:6px; margin-top:auto;}
+:is(#myraa-challan-studio,#return-studio) .myraa-period-details>div {display:flex; justify-content:space-between; align-items:baseline; gap:4px 10px; flex-wrap:wrap; min-width:0; font-size:12px; line-height:1.45;}
+:is(#myraa-challan-studio,#return-studio) .myraa-period-details dt {color:var(--period-muted);}
+:is(#myraa-challan-studio,#return-studio) .myraa-period-details dd {margin:0; font-weight:750; color:var(--period-text); overflow-wrap:anywhere; max-width:100%; font-variant-numeric:tabular-nums;}
+:is(#myraa-challan-studio,#return-studio) .myraa-period-unpriced {margin:0; color:var(--period-accent); font-size:12px; font-weight:650; overflow-wrap:anywhere;}
+:root[data-theme="dark"] :is(#myraa-challan-studio,#return-studio) .cs-period-head input {color-scheme:dark;}
+:root[data-theme="dark"] :is(#myraa-challan-studio,#return-studio) .myraa-period-section-title>span {color:#a9c9bc;}
+:root[data-theme="dark"] :is(#myraa-challan-studio,#return-studio) .cs-ordered {background:#194638; border-color:#2c6451;}
+:root[data-theme="dark"] :is(#myraa-challan-studio,#return-studio) .cs-received {background:#193c51; border-color:#2b566c;}
+:root[data-theme="dark"] :is(#myraa-challan-studio,#return-studio) .cs-pending {background:#443521; border-color:#6b5130;}
+:root[data-theme="dark"] :is(#myraa-challan-studio,#return-studio) .cs-value {background:#392c4b; border-color:#58416d;}
+:root[data-theme="dark"] :is(#myraa-challan-studio,#return-studio) .cs-ordered i {color:#73e1b0;}
+:root[data-theme="dark"] :is(#myraa-challan-studio,#return-studio) .cs-received i {color:#8dcfff;}
+:root[data-theme="dark"] :is(#myraa-challan-studio,#return-studio) .cs-pending i {color:#ffc77e;}
+:root[data-theme="dark"] :is(#myraa-challan-studio,#return-studio) .cs-value i {color:#d4b4ff;}
+:root[data-theme="dark"] :is(#myraa-challan-studio,#return-studio) .myraa-period-day {--period-bg:#194638; --period-border:#2c6451; --period-accent:#9beac3; --period-text:#edfdf4; --period-muted:#b9d8c9; --period-icon:#235a46; --period-rule:#386b56;}
+:root[data-theme="dark"] :is(#myraa-challan-studio,#return-studio) .myraa-period-month {--period-bg:#193c51; --period-border:#2b566c; --period-accent:#a5d6ff; --period-text:#edf7ff; --period-muted:#b9d5e9; --period-icon:#234f68; --period-rule:#3b6178;}
+:root[data-theme="dark"] :is(#myraa-challan-studio,#return-studio) .myraa-period-all {--period-bg:#392c4b; --period-border:#58416d; --period-accent:#dec2ff; --period-text:#fbf3ff; --period-muted:#d6c3e9; --period-icon:#513c69; --period-rule:#634f7a;}
+@media(max-width:480px){:is(#myraa-challan-studio,#return-studio) .cs-period-head label{margin-left:0;} :is(#myraa-challan-studio,#return-studio) .myraa-period-tile{padding:14px;} :is(#myraa-challan-studio,#return-studio) .myraa-period-section{margin-bottom:20px;}}
 
 /* R10: compact Top Movers controls and active designs with zero sizes. */
 #stage .myraa-movers-actions {display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:8px; min-width:0;}

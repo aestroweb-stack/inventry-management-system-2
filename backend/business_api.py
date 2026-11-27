@@ -4,11 +4,13 @@ All writes occur behind existing /api authentication and in DB transactions.
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import os
 import io
 import uuid
 from pathlib import Path
+from urllib.parse import quote
 from zipfile import ZipFile, ZIP_DEFLATED
 from xml.sax.saxutils import escape as xml_escape
 from PIL import Image, UnidentifiedImageError
@@ -18,14 +20,14 @@ from decimal import Decimal, InvalidOperation
 from typing import Optional, Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form, Query
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, case, update
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from database import get_db, tenant_root
 import models
-from business_models import ProductCost, VariantCost, MarketplaceSkuAlias, ProductMarketplaceAlias, PurchaseChallan, PurchaseChallanLine, PurchaseChallanAttachment, PurchaseReturn, PurchaseReturnLine
+from business_models import ProductCost, VariantCost, MarketplaceSkuAlias, ProductMarketplaceAlias, PurchaseChallan, PurchaseChallanLine, PurchaseChallanAttachment, PurchaseReturn, PurchaseReturnLine, PurchaseReturnDraft, PurchaseReturnDocument
 from services import excel_service, inventory_service, alert_service
 from services.table_reader import read_table, clean_code, to_int
 from services.catalog_identity import duplicate_design, duplicate_message, canonical_conflict, lock_catalog
@@ -1067,6 +1069,16 @@ def _serialize_return(b):
 
 @router.post('/purchase-returns', status_code=201)
 def post_supplier_return(payload: SupplierReturnDraft, db: Session = Depends(get_db)):
+    return _post_supplier_return(payload, db)
+
+
+def _post_supplier_return(payload, db, draft_id=None, revision=None):
+    # Draft lookup and consumption share the stock transaction.
+    lock_catalog(db)
+    draft = None
+    if draft_id is not None:
+        draft = _get_return_draft(db, draft_id, revision)
+        payload = SupplierReturnDraft.model_validate_json(draft.payload)
     number = _return_text(payload.return_no).upper()
     reason = _return_text(payload.reason)
     if len(number) > 120:
@@ -1076,7 +1088,6 @@ def post_supplier_return(payload: SupplierReturnDraft, db: Session = Depends(get
     try:
         # Same lock order as receipt posting/correction. SQLite serializes writers;
         # the invoice row lock also protects cumulative quantity validation.
-        lock_catalog(db)
         db.execute(update(PurchaseChallan).where(PurchaseChallan.id == payload.purchase_id).values(status=PurchaseChallan.status))
         invoice = db.query(PurchaseChallan).filter_by(id=payload.purchase_id, status='POSTED').populate_existing().with_for_update().first()
         if not invoice:
@@ -1085,6 +1096,9 @@ def post_supplier_return(payload: SupplierReturnDraft, db: Session = Depends(get
             raise HTTPException(422, 'Return date cannot precede purchase date')
         if db.query(PurchaseReturn.id).filter_by(return_no=number).first():
             raise HTTPException(409, 'Return invoice number already posted; check saved records before retrying.')
+        reserved = db.query(PurchaseReturnDraft).filter_by(return_no=number).first()
+        if reserved and (draft is None or reserved.id != draft.id):
+            raise HTTPException(409, 'Return number belongs to a saved draft; open the draft to post.')
         availability = {x['line_id']:x for x in _return_availability(db, invoice)}
         original = {x.id:x for x in invoice.lines}
         for item in payload.lines:
@@ -1112,6 +1126,9 @@ def post_supplier_return(payload: SupplierReturnDraft, db: Session = Depends(get
             db.add(PurchaseReturnLine(return_id=batch.id, purchase_line_id=line.id, variant_id=v.id,
                 sku=line.sku, name=line.name, size=line.size, quantity=item.quantity, unit_cost=line.unit_cost,
                 inventory_unit_cost=avg, balance_after=v.current_stock))
+        if draft is not None:
+            db.query(PurchaseReturnDocument).filter_by(draft_id=draft.id).update({PurchaseReturnDocument.return_id:batch.id,PurchaseReturnDocument.draft_id:None},synchronize_session=False)
+            db.delete(draft)
         db.commit()
     except (inventory_service.InsufficientStockError, inventory_service.StaleStockError) as exc:
         db.rollback()
@@ -1154,6 +1171,240 @@ def _return_export(records, filename):
 @router.get('/purchase-returns/export-records')
 def export_supplier_returns(q: str = Query('', max_length=200), date_filter: Optional[date] = None, db: Session = Depends(get_db)):
     return _return_export(_return_query(db,q,date_filter).options(selectinload(PurchaseReturn.lines)).order_by(PurchaseReturn.id.desc()).all(), 'MYRAA_Purchase_Returns.xlsx')
+
+
+# R24: saved return drafts and report-period totals. Drafts never reserve or deduct stock.
+class ReturnDraftUpdate(SupplierReturnDraft):
+    revision: str = Field(min_length=32, max_length=32)
+
+
+class ReturnDraftRevision(BaseModel):
+    revision: str = Field(min_length=32, max_length=32)
+
+
+def _get_return_draft(db, draft_id, revision=None):
+    d = db.query(PurchaseReturnDraft).filter_by(id=draft_id).populate_existing().first()
+    if not d:
+        raise HTTPException(404, 'Return draft not found; it may already have been posted.')
+    if revision is not None and d.revision != revision:
+        raise HTTPException(409, 'Draft changed in another session. Reopen before saving or posting.')
+    return d
+
+
+def _draft_dict(d):
+    return dict(id=d.id, purchase_id=d.purchase_id, return_no=d.return_no, party_name=d.party_name,
+        purchase_no=d.purchase_no, return_date=d.return_date, quantity=d.quantity, amount=float(d.amount),
+        revision=d.revision, status='DRAFT', payload=json.loads(d.payload))
+
+
+def _save_return_draft(db, payload, draft_id=None):
+    try:
+        lock_catalog(db)
+        d = _get_return_draft(db, draft_id, payload.revision) if draft_id is not None else None
+        if d is not None and d.purchase_id != payload.purchase_id:
+            raise HTTPException(409, "Saved draft is linked to its original purchase. Create a new return for another invoice.")
+        number = _return_text(payload.return_no).upper()
+        reason = _return_text(payload.reason)
+        if len(number)>120 or len({x.line_id for x in payload.lines})!=len(payload.lines):
+            raise HTTPException(422, 'Invalid return number or duplicate purchase line')
+        invoice = db.query(PurchaseChallan).options(selectinload(PurchaseChallan.lines)).filter_by(id=payload.purchase_id,status='POSTED').first()
+        if not invoice:
+            raise HTTPException(404, 'Posted purchase invoice not found')
+        if payload.return_date.isoformat()<invoice.order_date:
+            raise HTTPException(422, 'Return date cannot precede purchase date')
+        if db.query(PurchaseReturn.id).filter_by(return_no=number).first():
+            raise HTTPException(409, 'Return invoice already posted')
+        other=db.query(PurchaseReturnDraft).filter_by(return_no=number).first()
+        if other and (d is None or other.id!=d.id):
+            raise HTTPException(409, 'Return invoice number already saved as draft')
+        available={x['line_id']:x for x in _return_availability(db,invoice)}
+        original={x.id:x for x in invoice.lines}
+        for item in payload.lines:
+            if item.line_id not in available or item.quantity>available[item.line_id]['available']:
+                raise HTTPException(409, 'Return exceeds current available stock or purchase balance. Refresh invoice.')
+        if d is None:
+            d=PurchaseReturnDraft();db.add(d)
+        d.purchase_id=invoice.id;d.return_no=number;d.party_name=invoice.party_name;d.purchase_no=invoice.challan_no
+        d.return_date=payload.return_date.isoformat();d.quantity=sum(x.quantity for x in payload.lines)
+        d.amount=sum((original[x.line_id].unit_cost*x.quantity for x in payload.lines),Decimal('0'))
+        clean=SupplierReturnDraft(purchase_id=invoice.id,return_no=number,return_date=payload.return_date,reason=reason,lines=payload.lines)
+        d.payload=clean.model_dump_json();d.revision=uuid.uuid4().hex
+        db.commit();return _draft_dict(d)
+    except Exception:
+        db.rollback();raise
+
+
+@router.post('/purchase-returns/drafts',status_code=201)
+def create_return_draft(payload: SupplierReturnDraft, db: Session=Depends(get_db)):
+    return _save_return_draft(db,payload)
+
+
+@router.get('/purchase-returns/drafts')
+def list_return_drafts(q: str=Query('',max_length=200),date_filter: Optional[date]=None,offset: int=Query(0,ge=0),db: Session=Depends(get_db)):
+    query=db.query(PurchaseReturnDraft)
+    if q.strip():
+        term='%'+q.strip()+'%'
+        query=query.filter(or_(PurchaseReturnDraft.return_no.ilike(term),PurchaseReturnDraft.party_name.ilike(term),PurchaseReturnDraft.purchase_no.ilike(term)))
+    if date_filter:query=query.filter_by(return_date=date_filter.isoformat())
+    return dict(total=query.count(),items=[_draft_dict(x) for x in query.order_by(PurchaseReturnDraft.id.desc()).offset(offset).limit(6).all()])
+
+
+@router.get('/purchase-returns/drafts/export')
+def export_return_drafts(q: str=Query('',max_length=200),date_filter: Optional[date]=None,db: Session=Depends(get_db)):
+    query=db.query(PurchaseReturnDraft)
+    if q.strip():
+        term='%'+q.strip()+'%'
+        query=query.filter(or_(PurchaseReturnDraft.return_no.ilike(term),PurchaseReturnDraft.party_name.ilike(term),PurchaseReturnDraft.purchase_no.ilike(term)))
+    if date_filter:query=query.filter_by(return_date=date_filter.isoformat())
+    rows=[['Return No','Date','Supplier','Purchase Invoice','Pending Pieces','Draft Goods Value INR','Status']]
+    for d in query.order_by(PurchaseReturnDraft.id.desc()).all():
+        rows.append([d.return_no,d.return_date,d.party_name,d.purchase_no,d.quantity,float(d.amount),'DRAFT'])
+    return StreamingResponse(io.BytesIO(_simple_xlsx(rows)),media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',headers={'Content-Disposition':'attachment; filename="MYRAA_Return_Drafts.xlsx"'})
+
+
+@router.get('/purchase-returns/drafts/{draft_id}')
+def get_return_draft(draft_id: int,db: Session=Depends(get_db)):
+    return _draft_dict(_get_return_draft(db,draft_id))
+
+
+@router.put('/purchase-returns/drafts/{draft_id}')
+def update_return_draft(draft_id: int,payload: ReturnDraftUpdate,db: Session=Depends(get_db)):
+    return _save_return_draft(db,payload,draft_id)
+
+
+@router.delete('/purchase-returns/drafts/{draft_id}')
+def delete_return_draft(draft_id: int,revision: str=Query(...,min_length=32,max_length=32),db: Session=Depends(get_db)):
+    try:
+        lock_catalog(db);d=_get_return_draft(db,draft_id,revision);db.query(PurchaseReturnDocument).filter_by(draft_id=d.id).delete(synchronize_session=False);db.delete(d);db.commit()
+        return {'deleted':True}
+    except Exception:db.rollback();raise
+
+
+@router.post('/purchase-returns/drafts/{draft_id}/post',status_code=201)
+def post_return_draft(draft_id: int,payload: ReturnDraftRevision,db: Session=Depends(get_db)):
+    try:
+        return _post_supplier_return(None,db,draft_id,payload.revision)
+    except Exception:db.rollback();raise
+
+
+@router.get('/purchase-returns/periods')
+def return_periods(report_date: date,db: Session=Depends(get_db)):
+    def totals(start=None,end=None):
+        posted=db.query(func.count(func.distinct(PurchaseReturn.id)),func.coalesce(func.sum(PurchaseReturnLine.quantity),0),func.coalesce(func.sum(PurchaseReturnLine.quantity*PurchaseReturnLine.unit_cost),0)).join(PurchaseReturnLine,PurchaseReturnLine.return_id==PurchaseReturn.id)
+        drafts=db.query(func.count(PurchaseReturnDraft.id),func.coalesce(func.sum(PurchaseReturnDraft.quantity),0),func.coalesce(func.sum(PurchaseReturnDraft.amount),0))
+        if start:
+            posted=posted.filter(PurchaseReturn.return_date>=start);drafts=drafts.filter(PurchaseReturnDraft.return_date>=start)
+        if end:
+            posted=posted.filter(PurchaseReturn.return_date<=end);drafts=drafts.filter(PurchaseReturnDraft.return_date<=end)
+        n,q,a=posted.one();dn,dq,da=drafts.one()
+        return dict(count=n+dn,posted_count=n,draft_count=dn,quantity=int(q),amount=float(a),pending_quantity=int(dq),pending_amount=float(da))
+    day=report_date.isoformat();month=day[:7]
+    return dict(day=totals(day,day),month=totals(month+'-01',month+'-31'),all=totals())
+
+
+@router.get('/purchase-returns/import-template')
+def return_import_template():
+    return StreamingResponse(io.BytesIO(_simple_xlsx([['Master SKU','Size','Return Qty']])),media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',headers={'Content-Disposition':'attachment; filename="MYRAA_Return_Template.xlsx"'})
+
+
+@router.post('/purchase-returns/import-preview/{purchase_id}')
+async def preview_return_import(purchase_id:int,file:UploadFile=File(...),db:Session=Depends(get_db)):
+    raw=await file.read(MAX_EXCEL_SIZE+1)
+    if not raw or len(raw)>MAX_EXCEL_SIZE:raise HTTPException(422,'Excel or CSV must be 1 byte–12 MB')
+    # Existing spreadsheet reader; reject oversized expanded XLSX archives first.
+    if raw.startswith(b'PK'):
+        try:
+            with ZipFile(io.BytesIO(raw)) as z:
+                if sum(x.file_size for x in z.infolist())>64*1024*1024:raise ValueError('Expanded workbook too large')
+        except Exception as e:raise HTTPException(422,'Invalid or oversized workbook') from e
+    try:df=read_table(raw,file.filename or '')
+    except ValueError as e:raise HTTPException(422,str(e)) from e
+    headers={str(x).strip().lower():x for x in df.columns}
+    if not {'master sku','size','return qty'}<=headers.keys() or len(df)>10000 or df.empty:raise HTTPException(422,'Use Master SKU, Size, Return Qty (1–10000 rows)')
+    src=return_source(purchase_id,db);available={}
+    for r in src['lines']:available.setdefault((r['sku'].strip().upper(),r['size'].strip().upper()),[]).append(r)
+    counts={}
+    for idx,row in enumerate(df.to_dict('records'),2):
+        key=(clean_code(row[headers['master sku']]),clean_code(row[headers['size']]))
+        matches=available.get(key,[])
+        try:
+            q=Decimal(str(row[headers['return qty']]).strip())
+            if not q.is_finite() or q!=q.to_integral_value() or not 1<=q<=1000000:raise ValueError()
+        except (InvalidOperation,ValueError):raise HTTPException(422,f'Row {idx}: enter a positive whole return quantity')
+        if len(matches)!=1:raise HTTPException(422,f'Row {idx}: SKU and size must identify one line in the selected purchase invoice')
+        r=matches[0];counts[r['line_id']]=counts.get(r['line_id'],0)+int(q)
+        if counts[r['line_id']]>r['available']:raise HTTPException(409,f'Row {idx}: return quantity exceeds available stock or purchase balance')
+    return {'lines':[{'line_id':k,'quantity':v} for k,v in counts.items()]}
+
+
+def _return_documents(db, field, record_id):
+    cols=(PurchaseReturnDocument.id,PurchaseReturnDocument.filename,PurchaseReturnDocument.content_type,PurchaseReturnDocument.size_bytes)
+    return [dict(id=r.id,filename=r.filename,content_type=r.content_type,size_bytes=r.size_bytes) for r in db.query(*cols).filter(field==record_id).order_by(PurchaseReturnDocument.id).all()]
+
+
+@router.get('/purchase-returns/drafts/{draft_id}/documents')
+def list_draft_documents(draft_id:int,db:Session=Depends(get_db)):
+    d=_get_return_draft(db,draft_id)
+    return {'revision':d.revision,'items':_return_documents(db,PurchaseReturnDocument.draft_id,draft_id)}
+
+
+@router.post('/purchase-returns/drafts/{draft_id}/documents')
+async def upload_return_documents(draft_id:int,revision:str=Form(...),files:list[UploadFile]=File(...),db:Session=Depends(get_db)):
+    if not files or len(files)>MAX_CHALLAN_ATTACHMENTS:raise HTTPException(422,'Maximum 12 attachments per invoice')
+    prepared=[]
+    for file in files:
+        content=await file.read(MAX_INVOICE_BYTES+1)
+        if not content or len(content)>MAX_INVOICE_BYTES:raise HTTPException(422,'Each attachment must be 1 byte–10 MB')
+        kind=None
+        if content.startswith(b'%PDF-'):kind='application/pdf'
+        else:
+            try:
+                with Image.open(io.BytesIO(content)) as im:
+                    im.verify();kind={'JPEG':'image/jpeg','PNG':'image/png','WEBP':'image/webp'}.get(im.format)
+            except (UnidentifiedImageError,ValueError,OSError,Image.DecompressionBombError):pass
+        if not kind:raise HTTPException(422,'Only JPG, PNG, WEBP or PDF documents are allowed')
+        name=Path((file.filename or 'document').replace(chr(92),'/')).name[:255]
+        name=''.join(c for c in name if ord(c)>=32) or 'document'
+        prepared.append((content,kind,name))
+    try:
+        lock_catalog(db);d=_get_return_draft(db,draft_id,revision)
+        if db.query(PurchaseReturnDocument.id).filter_by(draft_id=draft_id).count()+len(prepared)>MAX_CHALLAN_ATTACHMENTS:raise HTTPException(422,'Maximum 12 attachments per invoice')
+        for content,kind,name in prepared:db.add(PurchaseReturnDocument(draft_id=draft_id,filename=name,content_type=kind,size_bytes=len(content),content=content))
+        d.revision=uuid.uuid4().hex;db.commit()
+        return list_draft_documents(draft_id,db)
+    except Exception:db.rollback();raise
+
+
+@router.delete('/purchase-returns/drafts/{draft_id}/documents/{document_id}')
+def delete_return_document(draft_id:int,document_id:int,revision:str=Query(...),db:Session=Depends(get_db)):
+    try:
+        lock_catalog(db);d=_get_return_draft(db,draft_id,revision)
+        doc=db.query(PurchaseReturnDocument).filter_by(id=document_id,draft_id=draft_id).first()
+        if not doc:raise HTTPException(404,'Document not found')
+        db.delete(doc);d.revision=uuid.uuid4().hex;db.commit();return list_draft_documents(draft_id,db)
+    except Exception:db.rollback();raise
+
+
+def _download_return_document(db,document_id,**owner):
+    doc=db.query(PurchaseReturnDocument).filter_by(id=document_id,**owner).first()
+    if not doc:raise HTTPException(404,'Document not found')
+    return Response(doc.content,media_type=doc.content_type,headers={'Content-Disposition':"attachment; filename*=UTF-8''"+quote(doc.filename,safe=''),'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'})
+
+
+@router.get('/purchase-returns/drafts/{draft_id}/documents/{document_id}')
+def download_draft_document(draft_id:int,document_id:int,db:Session=Depends(get_db)):
+    return _download_return_document(db,document_id,draft_id=draft_id)
+
+
+@router.get('/purchase-returns/{return_id}/documents')
+def list_posted_return_documents(return_id:int,db:Session=Depends(get_db)):
+    if not db.query(PurchaseReturn.id).filter_by(id=return_id).first():raise HTTPException(404,'Return invoice not found')
+    return {'items':_return_documents(db,PurchaseReturnDocument.return_id,return_id)}
+
+
+@router.get('/purchase-returns/{return_id}/documents/{document_id}')
+def download_posted_return_document(return_id:int,document_id:int,db:Session=Depends(get_db)):
+    return _download_return_document(db,document_id,return_id=return_id)
 
 
 @router.get('/purchase-returns/{return_id}')

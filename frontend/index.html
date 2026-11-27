@@ -21,7 +21,7 @@
 <link rel="stylesheet" href="myraa-accessible-v2.css?v=nov24-r4">
 <link rel="stylesheet" href="myraa-premium-nav.css?v=nov24-r4">
 <link rel="stylesheet" href="myraa-feedback.css?v=nov24-r4">
-<link rel="stylesheet" href="myraa-fixes.css?v=nov25-r14">
+<link rel="stylesheet" href="myraa-fixes.css?v=nov27-r24">
 <link rel="stylesheet" href="myraa-responsive-r6.css?v=nov25-r6">
 <link rel="stylesheet" href="myraa-polish-r15.css?v=nov26-r19-theme">
 <link rel="manifest" href="/app/manifest.webmanifest">
@@ -29,7 +29,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="stylesheet" href="/app/pwa-mobile.css?v=nov25-r18">
-<link rel="stylesheet" href="/app/purchase-returns.css?v=nov27-r23">
+<link rel="stylesheet" href="/app/purchase-returns.css?v=nov27-r24">
 <script defer src="/app/pwa-install.js?v=nov25-r18"></script>
 </head>
 <body>
@@ -319,24 +319,30 @@
 
     <section id="view-returns" class="view" aria-label="Supplier purchase returns">
       <section id="return-studio" class="myraa-challan-studio">
-        <header class="cs-header"><div class="cs-title"><span class="cs-logo"><i class="fa-solid fa-arrow-rotate-left" aria-hidden="true"></i></span><div><h2>Return Invoice</h2><p>Return purchased pieces to suppliers and deduct the correct size-wise stock.</p></div></div><div class="cs-header-actions"><button id="ri-new" class="cs-secondary" type="button"><i class="fa-regular fa-file-lines"></i> New Return</button><a id="ri-export" class="cs-secondary" href="/api/purchase-returns/export-records" download><i class="fa-solid fa-download"></i> Download Excel</a></div></header>
-        <div class="cs-period-head ri-period"><strong>Return overview</strong><span id="ri-overview-label">All saved returns</span></div>
-        <div class="cs-stats"><div class="cs-stat cs-ordered"><i class="fa-solid fa-file-invoice"></i><span>Return Invoices<strong id="ri-count">—</strong></span></div><div class="cs-stat cs-received"><i class="fa-solid fa-box-open"></i><span>Returned Pieces<strong id="ri-pieces">—</strong></span></div><div class="cs-stat cs-value"><i class="fa-solid fa-coins"></i><span>Return Value<strong id="ri-value">—</strong></span></div><div class="cs-stat cs-pending"><i class="fa-solid fa-clipboard-check"></i><span>Current Return<strong id="ri-current">0 pcs</strong></span></div></div>
+        <header class="cs-header"><div class="cs-title"><span class="cs-logo"><i class="fa-solid fa-receipt" aria-hidden="true"></i></span><div><h2>Return Invoice</h2><p>Record supplier returns, track returned pieces and deduct stock from inventory.</p></div></div><div class="cs-header-actions"><button id="ri-new" class="cs-secondary" type="button"><i class="fa-regular fa-file-lines"></i> New Invoice</button><a id="ri-export" class="cs-secondary" href="/api/purchase-returns/import-template" download><i class="fa-solid fa-download"></i> Download Excel</a></div></header>
+        <div class="cs-period-head ri-period"><strong>Return overview</strong><label>Report date <input id="ri-report-date" type="date"></label><span id="ri-overview-label" role="status">Saved invoices · including posted</span></div>
+        <div class="cs-stats"><div class="cs-stat cs-ordered"><i class="fa-solid fa-file-invoice"></i><span>Return Invoices<strong id="ri-count">—</strong></span></div><div class="cs-stat cs-received"><i class="fa-solid fa-box-open"></i><span>Returned<strong id="ri-pieces">—</strong></span></div><div class="cs-stat cs-pending"><i class="fa-regular fa-clock"></i><span>Pending<strong id="ri-pending">—</strong></span></div><div class="cs-stat cs-value"><i class="fa-solid fa-coins"></i><span>Goods Value<strong id="ri-value">—</strong></span></div></div>
+        <div class="myraa-period-section" aria-label="Return history totals"><div class="myraa-period-section-title"><h3>Return history</h3><span>Daily, monthly and lifetime totals</span></div><div id="ri-period-summary" class="myraa-period-summary" aria-live="polite"></div></div>
         <form id="ri-form">
+          <div class="cs-fields ri-fields"><label>Supplier / Party <em>*</em><input id="ri-party" readonly placeholder="Select original purchase invoice"></label><label>Return Invoice No. <em>*</em><input id="ri-number" maxlength="120" required placeholder="RI-2026-001"></label><label>Invoice Date <em>*</em><input id="ri-date" type="date" required></label></div>
           <div class="ri-source"><label class="field">Original posted purchase invoice<input class="input" id="ri-source-search" type="search" maxlength="200" placeholder="Search supplier, invoice, product or SKU"></label><button id="ri-find" class="cs-secondary" type="button">Find Invoice</button></div>
           <div class="ri-source-results"><label class="field">Select purchase invoice <em>*</em><select id="ri-source" class="input" required><option value="">Select an invoice</option></select></label><button id="ri-source-prev" class="cs-secondary" type="button">Previous</button><button id="ri-source-next" class="cs-secondary" type="button">Next</button><small id="ri-source-page" aria-live="polite"></small></div>
-          <div class="cs-fields ri-fields"><label>Supplier / Party<input id="ri-party" readonly placeholder="From purchase invoice"></label><label>Return Invoice No. <em>*</em><input id="ri-number" maxlength="120" required placeholder="RI-2026-001"></label><label>Return Date <em>*</em><input id="ri-date" type="date" required></label></div>
-          <div class="cs-items-head"><h3>Return Items</h3><button id="ri-refresh" type="button" class="cs-secondary" disabled><i class="fa-solid fa-arrows-rotate"></i> Refresh Stock</button></div>
+          <div class="cs-items-head"><h3>Invoice Items</h3><div class="ri-item-actions"><button id="ri-refresh" type="button" class="cs-secondary" disabled><i class="fa-solid fa-arrows-rotate"></i> Refresh Stock</button><button class="cs-add" id="ri-add" type="button">Add Item</button></div></div>
           <p class="hint" id="ri-source-note">Select a posted invoice to load its original purchase rates and available return quantities.</p>
-          <div id="ri-table-wrap" class="cs-table-wrap" hidden><table class="cs-table ri-table"><thead><tr><th>Product / Master SKU</th><th>Size</th><th>Received</th><th>Already returned</th><th>Stock</th><th>Returnable</th><th>Return Qty</th><th>Purchase Rate</th><th>Return Value</th></tr></thead><tbody id="ri-rows"></tbody></table></div>
-          <p id="ri-draft-total" class="cs-draft-totals" aria-live="polite">Current return: 0 pieces · ₹0.00</p>
-          <div class="cs-bottom ri-bottom"><label class="field">Return reason <em>*</em><textarea id="ri-reason" class="input" maxlength="500" required placeholder="Damaged piece, wrong size, excess stock…"></textarea></label><div class="cs-actions"><button id="ri-post" type="submit" class="cs-push" disabled><i class="fa-solid fa-arrow-right-from-bracket"></i><span>Save &amp; Post Return<small>Deduct from inventory</small></span></button></div></div>
-          <p class="cs-notice">Stock is deducted once, only after confirmation. Posted returns and original purchase quantities are locked for audit. Return value is goods value at original purchase rate, not proof of a refund or tax credit note.</p><p id="ri-message" class="cs-message" role="status" aria-live="polite"></p>
+          <div id="ri-picker" class="ri-source" hidden><label class="field">Product / Size<select class="input" id="ri-item-choice"></select></label><button id="ri-add-confirm" class="cs-add" type="button">Add Selected</button><button id="ri-add-cancel" class="cs-secondary" type="button">Cancel</button></div>
+          <div id="ri-empty" class="cs-empty"><span class="cs-empty-illustration"><i class="fa-solid fa-box-open" aria-hidden="true"></i></span><h4>No items yet</h4><p>Click <strong>Add Item</strong> to select the products to return. Nothing is added automatically.</p></div>
+          <div id="ri-table-wrap" class="cs-table-wrap" hidden><table class="cs-table ri-table"><thead><tr><th>Product / Master SKU</th><th>Size</th><th>Received</th><th>Already returned</th><th>Stock</th><th>Returnable</th><th>Return Qty</th><th>Unit Cost (₹)</th><th>Total Cost (₹)</th><th>Action</th></tr></thead><tbody id="ri-rows"></tbody></table></div>
+          <p id="ri-draft-total" class="cs-draft-totals" aria-live="polite">Current invoice: 0 pieces · Return value ₹0.00</p>
+          <label class="field ri-reason">Return reason <em>*</em><textarea id="ri-reason" class="input" maxlength="500" required placeholder="Damaged piece, wrong size, excess stock…"></textarea></label>
+          <div class="cs-bottom ri-bottom"><div class="cs-upload-area"><label class="cs-drop" for="ri-files" id="ri-drop"><i class="fa-solid fa-cloud-arrow-up"></i><strong>Attach Return Invoice</strong><small>PDF, JPG, PNG · Max 10 MB/file</small><input id="ri-files" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" multiple hidden disabled></label><div class="cs-previews ri-documents" id="ri-documents"><small>Save invoice before attaching documents.</small></div></div><div class="cs-actions"><button id="ri-save" type="submit" class="cs-secondary" disabled><i class="fa-solid fa-floppy-disk"></i> Save Invoice</button><button id="ri-post" type="button" class="cs-push" disabled><i class="fa-solid fa-boxes-stacked"></i><span>Deduct Returned Stock<small>from Inventory</small></span></button></div></div>
+          <p class="cs-notice">Save the invoice first. Stock is deducted only after confirmation. Posted returns cannot be edited or deleted. Return value is goods value at original purchase rate.</p><p id="ri-message" class="cs-message" role="status" aria-live="polite"></p>
         </form>
       </section>
-      <section class="panel ri-records"><div class="challan-list-heading"><div><h2>Supplier Return Records</h2><small>View saved returns and download invoice details</small></div><a id="ri-export-records" href="/api/purchase-returns/export-records" class="btn-secondary" download><i class="fa-solid fa-file-excel"></i> Export Records</a></div>
-        <div class="challan-search-row"><label class="field">Search<input id="ri-search" class="input" type="search" maxlength="200" placeholder="Party, return number, SKU…"></label><label class="field">Date<input id="ri-filter-date" class="input" type="date"></label><button id="ri-clear" class="btn-secondary" type="button">Clear</button></div>
-        <div id="ri-record-list" role="region" aria-label="Saved returns"><p class="hint">No returns loaded.</p></div><div class="myraa-pagination"><button id="ri-prev" class="btn-secondary" type="button">← Previous</button><span id="ri-page" aria-live="polite">0 of 0</span><button id="ri-next" class="btn-secondary" type="button">Next →</button></div>
+      <details class="cs-legacy-import ri-import"><summary>Import Invoice from Excel / CSV</summary><div class="ri-import-body"><p class="hint">Select the original purchase invoice above. Use Master SKU, Size and Return Qty. Import only prepares items; save and confirm separately.</p><a class="invoice-template-link" href="/api/purchase-returns/import-template" download><i class="fa-solid fa-download"></i> Download Sample Excel Template</a><label class="field invoice-file-zone"><span class="invoice-file-icon"><i class="fa-solid fa-file-excel"></i></span><strong>Upload Excel / CSV invoice</strong><input id="ri-import-file" type="file" accept=".xlsx,.csv" aria-label="Return invoice spreadsheet"></label><button id="ri-import-button" class="cs-add" type="button">Import Items</button></div></details>
+      <section class="panel myraa-challan-records ri-records"><div class="challan-list-heading"><div><h2>Supplier Return Records</h2><small>Open saved invoices, edit drafts and download posted returns</small></div><a id="ri-export-records" href="/api/purchase-returns/export-records" class="btn-secondary invoice-export-records" download><i class="fa-solid fa-file-excel"></i> Export All Records</a></div>
+        <div class="challan-search-row"><label class="field">Search<input id="ri-search" class="input" type="search" maxlength="200" placeholder="Party, return number, invoice…"></label><label class="field">Date<input id="ri-filter-date" class="input" type="date"></label><button id="ri-clear" class="btn-secondary" type="button">Clear</button></div>
+        <div class="ri-record-tabs" aria-label="Return record status"><button id="ri-tab-posted" class="cs-secondary" aria-pressed="true" type="button">Posted</button><button id="ri-tab-drafts" class="cs-secondary" aria-pressed="false" type="button">Saved drafts</button></div>
+        <div id="ri-record-list" class="challan-batches" role="region" aria-label="Saved returns"><p class="hint">No returns loaded.</p></div><div class="myraa-pagination"><button id="ri-prev" class="btn-secondary" type="button">← Previous</button><span id="ri-page" aria-live="polite">0 of 0</span><button id="ri-next" class="btn-secondary" type="button">Next →</button></div>
       </section>
       <section class="panel ri-records" id="ri-detail" hidden></section>
     </section>
@@ -574,7 +580,7 @@
 <script src="business-workspace.js?v=nov25-r17"></script>
 <script src="product-challan-pages.js?v=nov24-r4"></script>
 <script src="myraa-challan-studio.js?v=nov25-r13"></script>
-<script src="purchase-returns.js?v=nov27-r23"></script>
+<script src="purchase-returns.js?v=nov27-r24"></script>
 <script src="seller-sounds.js?v=nov24-r4"></script>
 <script src="clerk-auth.js?v=nov24-r4"></script>
 <script src="myraa-ui-refresh.js?v=nov24-r4"></script>

@@ -2,7 +2,7 @@
 No ALTER TABLE or destructive migration is required for existing catalog records.
 """
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, Numeric, ForeignKey, DateTime, UniqueConstraint, Text
+from sqlalchemy import Column, Integer, String, Numeric, ForeignKey, DateTime, UniqueConstraint, Text, LargeBinary
 from sqlalchemy.orm import relationship
 from database import Base
 
@@ -133,3 +133,31 @@ class PurchaseReturnLine(Base):
     inventory_unit_cost = Column(Numeric(12, 2), nullable=False)
     balance_after = Column(Integer, nullable=False)
     __table_args__ = (UniqueConstraint('return_id', 'purchase_line_id', name='uq_purchase_return_line'),)
+
+
+class PurchaseReturnDraft(Base):
+    """Saved intent only. No inventory movement until atomic posting."""
+    __tablename__ = 'myraa_purchase_return_drafts'
+    id = Column(Integer, primary_key=True)
+    purchase_id = Column(Integer, nullable=False, index=True)
+    return_no = Column(String(120), nullable=False, unique=True)
+    party_name = Column(String(180), nullable=False)
+    purchase_no = Column(String(120), nullable=False)
+    return_date = Column(String(10), nullable=False, index=True)
+    payload = Column(Text, nullable=False)
+    quantity = Column(Integer, nullable=False)
+    amount = Column(Numeric(18, 2), nullable=False)
+    revision = Column(String(32), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class PurchaseReturnDocument(Base):
+    """Tenant-private receipt evidence retained with posted returns."""
+    __tablename__ = 'myraa_purchase_return_documents'
+    id = Column(Integer, primary_key=True)
+    draft_id = Column(Integer, ForeignKey('myraa_purchase_return_drafts.id'), nullable=True, index=True)
+    return_id = Column(Integer, ForeignKey('myraa_purchase_returns.id'), nullable=True, index=True)
+    filename = Column(String(255), nullable=False)
+    content_type = Column(String(80), nullable=False)
+    size_bytes = Column(Integer, nullable=False)
+    content = Column(LargeBinary, nullable=False)
